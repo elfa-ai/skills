@@ -5,8 +5,10 @@
 #   API key:  Set ELFA_API_KEY in the environment (default).
 #   x402:     Pass --x402 with a pre-signed payment header via --payment.
 #
-# Supports Auto endpoints with HMAC signing:
-#   --hmac-secret  HMAC secret for mutation endpoints under /v2/auto/.
+# Supports Auto endpoints with HMAC signing (conditional per route):
+#   --hmac-secret  HMAC secret. Required for exchange linking; optional for
+#                  query lifecycle routes (signed if provided, allowed without
+#                  for notification-only EQL actions).
 #   --agent-secret Agent identity secret for x402 Auto requests.
 #
 # Usage:
@@ -48,9 +50,8 @@ Options:
   -h, --help                  Show this help
 
 Auto endpoint HMAC signing:
-  Mutation endpoints under /v2/auto/ require an HMAC-SHA256 signature. When
-  --hmac-secret is provided (or ELFA_HMAC_SECRET is set) and the request is a
-  POST or DELETE to an /auto/ path, the following headers are added automatically:
+  HMAC behavior is determined per route. When the script signs a request, it
+  adds these headers automatically:
 
     x-elfa-timestamp: <unix_seconds>
     x-elfa-signature: <hex_hmac_sha256>
@@ -58,23 +59,33 @@ Auto endpoint HMAC signing:
   The signature payload is: timestamp + METHOD + mounted_path + body
   where mounted_path is the portion of the path AFTER /v2/auto.
   Example: /v2/auto/queries  →  mounted_path = /queries
-           /v2/auto/chat     →  mounted_path = /chat
            /v2/auto/queries/q_123  →  mounted_path = /queries/q_123
 
-  Endpoints that DO require HMAC:
-    POST   /v2/auto/chat
-    POST   /v2/auto/queries                              (create)
-    DELETE /v2/auto/queries/{queryId}                    (cancel)
-    POST   /v2/auto/queries/drafts/{draftId}/convert     (draft → active query)
-    POST   /v2/auto/exchanges                            (connect)
-    DELETE /v2/auto/exchanges/{exchange}                 (disconnect)
+  HMAC always required (script will refuse to call without --hmac-secret):
+    POST   /v2/auto/exchanges                            (connect — trade gateway)
+    DELETE /v2/auto/exchanges/{exchange}                 (disconnect — trade gateway)
 
-  Endpoints that do NOT require HMAC (auto-detected, skipped):
-    POST   /v2/auto/queries/validate
-    POST   /v2/auto/queries/preview
+  HMAC conditional (signed if --hmac-secret is provided; allowed without for
+  notification-only EQL actions like notify / telegram_bot / webhook):
+    POST   /v2/auto/queries                              (create)
+    POST   /v2/auto/queries/{queryId}/cancel             (cancel — preferred)
+    DELETE /v2/auto/queries/{queryId}                    (cancel — legacy)
     POST   /v2/auto/queries/drafts                       (upsert draft)
+    POST   /v2/auto/queries/drafts/{draftId}/convert     (draft → active query)
+
+  HMAC never required (signing is skipped even if --hmac-secret is set):
+    POST   /v2/auto/chat                                 (Builder Chat — produces drafts only)
+    POST   /v2/auto/queries/validate                     (free, no side effects)
+    POST   /v2/auto/queries/preview                      (free, no side effects)
     DELETE /v2/auto/queries/drafts/{draftId}             (discard draft)
-    POST   /v2/auto/queries/drafts/{draftId}/preview
+    POST   /v2/auto/queries/drafts/{draftId}/preview     (preview stored draft)
+
+  Note: For "conditional" routes, the API server enforces HMAC only when the
+  EQL action is trade-flavoured (market_order, limit_order, or llm callback to
+  those). Notification-only actions (notify, telegram_bot, webhook, llm
+  callback to those) are accepted unsigned. If you receive a 401 for a route
+  that should accept notification actions, double-check your action payload.
+  Always-signing remains safe — signed requests are accepted on every route.
 
 Examples:
   # API key mode (reads ELFA_API_KEY from env)
@@ -91,22 +102,29 @@ Examples:
   # Auto: preview a query without creating it (no HMAC needed)
   ./elfa_call.sh /v2/auto/queries/preview -d '{"query":{...}}'
 
-  # Auto: create a query (HMAC auto-applied)
-  ./elfa_call.sh /v2/auto/queries -d '{"query":{...}}' --hmac-secret "$ELFA_HMAC_SECRET"
+  # Auto: Builder Chat (no HMAC needed — produces drafts only)
+  ./elfa_call.sh /v2/auto/chat -d '{"message":"Alert me when BTC breaks 100k"}'
 
-  # Auto: cancel a query (HMAC auto-applied)
-  ./elfa_call.sh /v2/auto/queries/q_123 -X DELETE --hmac-secret "$ELFA_HMAC_SECRET"
+  # Auto: create a query with notification action (HMAC OPTIONAL — runs without secret)
+  ./elfa_call.sh /v2/auto/queries -d '{"query":{"actions":[{"type":"notify",...}],...}}'
 
-  # Auto: upsert a draft (no HMAC needed)
+  # Auto: create a query with trade action (HMAC required — server returns 401 without it)
+  ./elfa_call.sh /v2/auto/queries -d '{"query":{"actions":[{"type":"market_order",...}],...}}' --hmac-secret "$ELFA_HMAC_SECRET"
+
+  # Auto: cancel a query (HMAC OPTIONAL — depends on stored query's action type)
+  ./elfa_call.sh /v2/auto/queries/q_123/cancel -X POST
+  ./elfa_call.sh /v2/auto/queries/q_123 -X DELETE  # legacy form
+
+  # Auto: upsert a draft (HMAC OPTIONAL — depends on body's action type)
   ./elfa_call.sh /v2/auto/queries/drafts -d '{"query":{...}}'
 
-  # Auto: convert a draft to active query (HMAC auto-applied)
-  ./elfa_call.sh /v2/auto/queries/drafts/d_123/convert -X POST --hmac-secret "$ELFA_HMAC_SECRET"
+  # Auto: convert a draft to active query (HMAC OPTIONAL — depends on stored draft's action type)
+  ./elfa_call.sh /v2/auto/queries/drafts/d_123/convert -X POST
 
   # Auto: list executions
   ./elfa_call.sh /v2/auto/executions
 
-  # Auto: connect an exchange (HMAC auto-applied)
+  # Auto: connect an exchange (HMAC ALWAYS required — trade gateway)
   ./elfa_call.sh /v2/auto/exchanges -d '{"exchange":"hyperliquid",...}' --hmac-secret "$ELFA_HMAC_SECRET"
 
   # Auto x402: create query with agent secret
@@ -170,17 +188,23 @@ else
   [[ -z "${ELFA_API_KEY:-}" ]] && die "ELFA_API_KEY is not set. Get a free key at https://go.elfa.ai/claude-skills"
 fi
 
-# Determine whether this is an Auto mutation that requires HMAC signing.
+# Determine HMAC behavior for this Auto request. Tri-state:
+#
+#   none         — never sign (read-only, validate/preview, /chat ungated routes)
+#   conditional  — sign IF an HMAC secret is available; allow request through
+#                  without HMAC otherwise. Per the docs, the server bypasses HMAC
+#                  for notification-only EQL actions (notify / telegram_bot /
+#                  webhook / llm-callback-to-those) and enforces HMAC for trade
+#                  actions (market_order / limit_order / llm-callback-to-those).
+#                  Always-signing remains safe — signed requests are accepted
+#                  on every route.
+#   required     — must have an HMAC secret; refuse to call without one. Used
+#                  for exchange linking (POST/DELETE /exchanges) which always
+#                  needs HMAC.
+#
 # We check the *original* endpoint (before x402 rewrite) by examining whether
 # the path contains /auto/ and the method is POST or DELETE.
-#
-# HMAC required (per docs): create/cancel query, builder chat, connect/disconnect
-# exchange, convert draft → active query.
-#
-# HMAC NOT required (per docs): validate, preview (non-draft), draft upsert,
-# draft delete, draft preview, draft get — drafts are a staging area and don't
-# trigger anything until converted.
-IS_AUTO_MUTATION=false
+HMAC_BEHAVIOR="none"
 IS_AUTO_ENDPOINT=false
 # Use the original endpoint for detection (strip /x402 prefix if present)
 ORIGINAL_ENDPOINT="${ENDPOINT#/x402}"
@@ -188,16 +212,23 @@ if [[ "$ORIGINAL_ENDPOINT" == /v2/auto/* ]]; then
   IS_AUTO_ENDPOINT=true
   if [[ "$METHOD" == "POST" || "$METHOD" == "DELETE" ]]; then
     MOUNTED_CHECK="${ORIGINAL_ENDPOINT#/v2/auto}"
+    # NOTE: bash case is first-match-wins. Order matters — more-specific
+    # patterns must come before catch-all globs.
     case "$MOUNTED_CHECK" in
-      /queries/validate)            ;;  # validate: no HMAC
-      /queries/preview)             ;;  # preview a query: no HMAC
-      /queries/drafts)              ;;  # upsert draft: no HMAC
-      /queries/drafts/*/convert)
-        IS_AUTO_MUTATION=true       ;;  # convert draft → active query: HMAC
-      /queries/drafts/*/preview)    ;;  # preview a stored draft: no HMAC
-      /queries/drafts/*)            ;;  # get/delete draft: no HMAC
-      *)
-        IS_AUTO_MUTATION=true       ;;  # all other POST/DELETE on /v2/auto/*: HMAC
+      # Never HMAC
+      /chat)                        ;;  # ungated — produces drafts only
+      /queries/validate)            ;;  # free, no side effects
+      /queries/preview)             ;;  # free, no side effects
+      /queries/drafts/*/preview)    ;;  # preview a stored draft
+      /queries/drafts/*/convert)    HMAC_BEHAVIOR="conditional" ;;  # convert depends on stored draft action
+      /queries/drafts/*)            ;;  # GET/DELETE specific draft (no side effects)
+      /queries/drafts)              HMAC_BEHAVIOR="conditional" ;;  # POST upsert depends on body action
+      /queries/*/cancel)            HMAC_BEHAVIOR="conditional" ;;  # POST cancel depends on stored query action
+      /queries/*)                   HMAC_BEHAVIOR="conditional" ;;  # DELETE /queries/:id (legacy cancel)
+      /queries)                     HMAC_BEHAVIOR="conditional" ;;  # POST create depends on body action
+      /exchanges)                   HMAC_BEHAVIOR="required" ;;  # POST connect: trade gateway
+      /exchanges/*)                 HMAC_BEHAVIOR="required" ;;  # DELETE disconnect: trade gateway
+      *)                            HMAC_BEHAVIOR="required" ;;  # unknown route — fail-safe
     esac
   fi
 fi
@@ -223,23 +254,36 @@ if [[ -n "$BODY" ]]; then
   CURL_ARGS+=(-H "Content-Type: application/json" -d "$BODY")
 fi
 
-# HMAC signing for Auto mutation endpoints
-if [[ "$IS_AUTO_MUTATION" == true ]]; then
-  if [[ -n "$HMAC_SECRET" ]]; then
-    # Extract mounted_path: strip /v2/auto from the original endpoint
-    MOUNTED_PATH="${ORIGINAL_ENDPOINT#/v2/auto}"
-    # Ensure mounted_path starts with /
-    [[ "$MOUNTED_PATH" == /* ]] || MOUNTED_PATH="/${MOUNTED_PATH}"
+# HMAC signing for Auto endpoints (tri-state — see HMAC_BEHAVIOR comment above)
+SHOULD_SIGN=false
+case "$HMAC_BEHAVIOR" in
+  required)
+    if [[ -z "$HMAC_SECRET" ]]; then
+      die "Auto endpoint (${METHOD} ${ORIGINAL_ENDPOINT}) always requires HMAC (exchange linking). Set ELFA_HMAC_SECRET in your environment or pass --hmac-secret <secret>."
+    fi
+    SHOULD_SIGN=true
+    ;;
+  conditional)
+    # Sign if a secret is available (always-safe). Skip otherwise — the server
+    # accepts unsigned requests for notification-only EQL actions and will
+    # return 401 for trade-action requests. If you hit a 401 here, set
+    # ELFA_HMAC_SECRET (or pass --hmac-secret) and retry.
+    [[ -n "$HMAC_SECRET" ]] && SHOULD_SIGN=true
+    ;;
+esac
 
-    TIMESTAMP=$(date +%s)
-    SIGN_PAYLOAD="${TIMESTAMP}${METHOD}${MOUNTED_PATH}${BODY}"
-    SIGNATURE=$(printf '%s' "$SIGN_PAYLOAD" | openssl dgst -sha256 -hmac "$HMAC_SECRET" | sed 's/^.* //')
+if [[ "$SHOULD_SIGN" == true ]]; then
+  # Extract mounted_path: strip /v2/auto from the original endpoint
+  MOUNTED_PATH="${ORIGINAL_ENDPOINT#/v2/auto}"
+  # Ensure mounted_path starts with /
+  [[ "$MOUNTED_PATH" == /* ]] || MOUNTED_PATH="/${MOUNTED_PATH}"
 
-    CURL_ARGS+=(-H "x-elfa-timestamp: ${TIMESTAMP}")
-    CURL_ARGS+=(-H "x-elfa-signature: ${SIGNATURE}")
-  else
-    die "Auto mutation endpoint (${METHOD} ${ORIGINAL_ENDPOINT}) requires an HMAC secret. Set ELFA_HMAC_SECRET in your environment or pass --hmac-secret <secret>."
-  fi
+  TIMESTAMP=$(date +%s)
+  SIGN_PAYLOAD="${TIMESTAMP}${METHOD}${MOUNTED_PATH}${BODY}"
+  SIGNATURE=$(printf '%s' "$SIGN_PAYLOAD" | openssl dgst -sha256 -hmac "$HMAC_SECRET" | sed 's/^.* //')
+
+  CURL_ARGS+=(-H "x-elfa-timestamp: ${TIMESTAMP}")
+  CURL_ARGS+=(-H "x-elfa-signature: ${SIGNATURE}")
 fi
 
 # Execute

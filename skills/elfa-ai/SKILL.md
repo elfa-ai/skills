@@ -22,8 +22,12 @@ env:
     required: false
   - name: ELFA_HMAC_SECRET
     description: >
-      HMAC secret for signing Auto mutation requests (/v2/auto/* POST/DELETE).
-      Required only for API-key mode Auto mutations. Get this from the Elfa Developer Portal.
+      HMAC secret for signing Auto mutation requests. Required for trade-action
+      mutations (`market_order`, `limit_order`, `llm` callback to those) and exchange
+      linking under /v2/auto/. Notification-only mutations (`notify`, `telegram_bot`,
+      `webhook`, `llm` callback to those) skip HMAC and do NOT require this secret.
+      Always-signing remains safe — signed requests are accepted on every route.
+      Get this from the Elfa Developer Portal.
     required: false
   - name: ELFA_AGENT_SECRET
     description: >
@@ -33,7 +37,7 @@ env:
     required: false
 credentials:
   primary: ELFA_API_KEY (optional — x402 mode requires no credentials from the user)
-  hmac: ELFA_HMAC_SECRET (optional — only for API-key Auto mutations)
+  hmac: ELFA_HMAC_SECRET (optional — required only for trade mutations and exchange linking; notification-only mutations skip HMAC)
   agent_secret: ELFA_AGENT_SECRET (optional — only for x402 Auto identity)
   x402: Wallet-based signing handled client-side by @x402/fetch or @x402/axios libraries
 ---
@@ -107,8 +111,14 @@ except `key-status` which is API key mode only.
 
 #### Auto endpoints (Condition Engine)
 
-Auto endpoints are available under `/v2/auto/` (API key + HMAC) and `/x402/v2/auto/` (keyless).
-See [Auto docs](https://docs.elfa.ai/auto/overview) for full details.
+Auto endpoints are available under `/v2/auto/` (API key, HMAC for trade/exchange routes) and
+`/x402/v2/auto/` (keyless). See [Auto docs](https://docs.elfa.ai/auto/overview) for full details.
+
+> **Auth column legend (tables below).** `API key` = `x-elfa-api-key` only (no HMAC).
+> `Conditional` = HMAC required only when the EQL action is trade-flavoured
+> (`market_order`, `limit_order`, or `llm` callback to those); notification-only actions
+> (`notify`, `telegram_bot`, `webhook`, `llm` callback to those) skip HMAC. `HMAC` = HMAC
+> always required. See [HMAC Bypass for Notification-Only Mutations](#hmac-bypass-for-notification-only-mutations).
 
 **API key mode (`/v2/auto/*`):**
 
@@ -116,25 +126,26 @@ _Query lifecycle:_
 
 | Endpoint | Method | Description | Auth |
 |---|---|---|---|
-| `/v2/auto/chat` | POST | Builder Chat — AI-assisted query building | HMAC |
-| `/v2/auto/queries/validate` | POST | Validate EQL and preview cost | API key only |
+| `/v2/auto/chat` | POST | Builder Chat — AI-assisted query building (produces drafts only) | API key |
+| `/v2/auto/queries/validate` | POST | Validate EQL and preview cost | API key |
 | `/v2/auto/queries/preview` | POST | Preview a query without creating it | API key |
-| `/v2/auto/queries` | POST | Create and activate a query | HMAC |
+| `/v2/auto/queries` | POST | Create and activate a query | Conditional |
 | `/v2/auto/queries` | GET | List queries | API key |
 | `/v2/auto/queries/:queryId` | GET | Poll query status and executions (resolves query or draft) | API key |
-| `/v2/auto/queries/:queryId` | DELETE | Cancel a query | HMAC |
+| `/v2/auto/queries/:queryId/cancel` | POST | Cancel a query (preferred form) | Conditional |
+| `/v2/auto/queries/:queryId` | DELETE | Cancel a query (legacy form) | Conditional |
 | `/v2/auto/queries/:queryId/stream` | GET | Stream notifications via SSE | API key |
 
 _Query drafts (editable, not yet active):_
 
 | Endpoint | Method | Description | Auth |
 |---|---|---|---|
-| `/v2/auto/queries/drafts` | POST | Create or update (upsert) a query draft | API key |
+| `/v2/auto/queries/drafts` | POST | Create or update (upsert) a query draft | Conditional |
 | `/v2/auto/queries/drafts` | GET | List editable query drafts | API key |
 | `/v2/auto/queries/drafts/:draftId` | GET | Get a specific draft (legacy — prefer `GET /queries/{queryId}`) | API key |
 | `/v2/auto/queries/drafts/:draftId` | DELETE | Delete a query draft | API key |
 | `/v2/auto/queries/drafts/:draftId/preview` | POST | Preview a stored draft | API key |
-| `/v2/auto/queries/drafts/:draftId/convert` | POST | Convert a draft into an active query | HMAC |
+| `/v2/auto/queries/drafts/:draftId/convert` | POST | Convert a draft into an active query | Conditional |
 
 _LLM sessions (for `action.type: "llm"` queries):_
 
@@ -366,15 +377,23 @@ Full Auto docs: [docs.elfa.ai/auto/overview](https://docs.elfa.ai/auto/overview)
 
 | Mode | Route prefix | Auth | Best for |
 |---|---|---|---|
-| API key + HMAC | `/v2/auto/*` | `x-elfa-api-key` on all + HMAC on mutations | Apps, dashboards |
+| API key + HMAC | `/v2/auto/*` | `x-elfa-api-key` on all + HMAC on trade mutations and exchange linking (notification-only mutations skip HMAC) | Apps, dashboards |
 | x402 keyless | `/x402/v2/auto/*` | x402 payment + `x-elfa-agent-secret` | AI agents, bots |
 
-#### HMAC signing (API key mode — mutations only)
+#### HMAC signing (API key mode — trade mutations and exchange linking)
 
-Mutation endpoints under `/v2/auto/*` (POST, DELETE) require HMAC signing in addition to
-`x-elfa-api-key`. Read-only endpoints (GET) only need the API key.
+Trade-action mutations and exchange linking under `/v2/auto/*` require HMAC signing in
+addition to `x-elfa-api-key`. **Notification-only mutations skip HMAC** so agents can
+onboard without provisioning a secret — see
+[HMAC Bypass for Notification-Only Mutations](#hmac-bypass-for-notification-only-mutations)
+below for the per-route decision rule. Read-only endpoints (GET) only need the API key.
+`POST /v2/auto/chat` is fully ungated and never needs HMAC.
 
-**Required headers for mutations:**
+> **Always-signing remains safe.** If your client signs every mutation, you do not need
+> to opt into the bypass. Signed requests are accepted on every route. The bypass is
+> purely an optimization for clients that want to skip the HMAC setup step.
+
+**Required headers for signed mutations:**
 
 ```
 x-elfa-api-key: <api_key>
@@ -456,6 +475,49 @@ curl -s -X POST "https://api.elfa.ai/v2/auto/queries" \
   -H "x-elfa-signature: $SIGNATURE" \
   -d "$BODY"
 ```
+
+#### HMAC Bypass for Notification-Only Mutations
+
+Mutations whose EQL action is a pure notification skip the HMAC requirement. Trade
+execution and exchange linking continue to require HMAC unconditionally.
+
+**Notification action types (HMAC bypassed):**
+
+- `notify`
+- `telegram_bot`
+- `webhook`
+- `llm` whose `params.callback.action.type` is one of the above
+
+**Trade action types (HMAC required):**
+
+- `market_order`
+- `limit_order`
+- `llm` whose `params.callback.action.type` is `market_order` or `limit_order`
+
+**Decision is per-route:**
+
+| Route | Decision input |
+|---|---|
+| `POST /v2/auto/queries`, `POST /v2/auto/queries/drafts` | Request body's `query.actions[*].type` |
+| `POST /v2/auto/queries/drafts/:id/convert` | Stored draft's actions |
+| `POST /v2/auto/queries/:id/cancel`, `DELETE /v2/auto/queries/:id` | Stored query's actions |
+
+If the lookup fails or the action type is unknown, HMAC is enforced (fail-safe). Unknown
+action types added in future API versions default to requiring HMAC, so always-signing
+clients keep working.
+
+`POST /v2/auto/chat` is fully ungated regardless of content because it produces drafts
+only — activation flows through `convert`, which is still gated when the draft is
+trade-flavoured.
+
+`POST /v2/auto/exchanges` and `DELETE /v2/auto/exchanges/:exchange` always require
+HMAC — linking an exchange is the gateway to trade execution.
+
+**Why this matters for agents.** An agent that only ever sends `notify` / `telegram_bot` /
+`webhook` actions can call `POST /v2/auto/queries`, `POST /v2/auto/queries/:id/cancel`,
+etc. with just `x-elfa-api-key` — no HMAC secret provisioning required. Agents that need
+trade execution must still configure `ELFA_HMAC_SECRET` for the trade-flavoured calls and
+for exchange linking.
 
 #### x402 Auto (keyless agent mode)
 
@@ -1227,7 +1289,7 @@ committing, or batch authoring flows.
 1. `POST /v2/auto/queries/drafts` — create or update a draft (idempotent upsert).
 2. `GET /v2/auto/queries/drafts` — list editable drafts.
 3. `POST /v2/auto/queries/drafts/:draftId/preview` — validate/preview stored draft.
-4. `POST /v2/auto/queries/drafts/:draftId/convert` — promote draft → active query (**HMAC required**).
+4. `POST /v2/auto/queries/drafts/:draftId/convert` — promote draft → active query (**HMAC conditional**: required only when the stored draft uses a trade action type).
 5. `DELETE /v2/auto/queries/drafts/:draftId` — discard draft.
 
 > `GET /v2/auto/queries/drafts/:draftId` still works but is legacy — prefer
@@ -1278,7 +1340,7 @@ See the [Elfa API documentation](https://docs.elfa.ai) for the full parameter sp
 - Always include proper error handling
 - For API key mode: show the `x-elfa-api-key` header (use a placeholder like `YOUR_API_KEY`)
 - For x402 mode: show the `/x402/v2/` prefix and recommend `@x402/fetch` or `@x402/axios`
-- For Auto mutations: include HMAC signing code or x402 agent-secret depending on mode
+- For Auto trade mutations and exchange linking: include HMAC signing code (notification-only mutations skip HMAC); for x402 use the agent-secret header
 - Include TypeScript types when generating TS code
 - Add comments explaining each parameter
 - For pagination endpoints, show how to paginate through results
@@ -1298,7 +1360,7 @@ See the [Elfa API documentation](https://docs.elfa.ai) for the full parameter sp
 
 **Auto code generation guidance:**
 - Always include the validate → create flow (never create without validating first)
-- For API key mode: include HMAC signing helper function
+- For API key mode: include HMAC signing helper for trade-action and exchange-linking calls (notification-only mutations can be made with just `x-elfa-api-key`)
 - For x402 mode: include `x-elfa-agent-secret` header on all query lifecycle calls
 - Include Builder Chat examples when the user wants natural-language query building
 - Show how to poll or stream for results after query creation
