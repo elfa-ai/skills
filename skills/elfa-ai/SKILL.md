@@ -810,8 +810,19 @@ A query contains `conditions`, `actions`, and `expiresIn`:
 
 **Allowed `expiresIn` values:** `1h`, `2h`, `4h`, `8h`, `12h`, `24h`, `2d`, `3d`, `5d`, `7d`
 
-**Allowed action types:** `webhook`, `notify`, `telegram`, `llm` — chainable (multiple
-actions per query).
+**Allowed action types:** `webhook`, `notify`, `telegram_bot`, `llm`, `market_order`, `limit_order`. The `actions` array is **exactly one step** per query — chain follow-up work via `llm` action with `params.callback.action`, or have your runner fan out from the trigger event.
+
+**Action params shape (key fields):**
+
+| `type` | Required `params` | Optional `params` |
+|---|---|---|
+| `notify` | `message` (1–1000 chars) | — |
+| `webhook` | `url` (https only, allowlisted host) | `allNotifications` (default `false`) |
+| `telegram_bot` | `botToken`, `chatId` | `allNotifications` (default `false`) |
+| `market_order` / `limit_order` | `exchange`, `symbol`, `side`, and `size` XOR `amount` (+ `price` for limit) | `reduceOnly`, `leverage`, `tp`, `sl` |
+| `llm` | `action` (chat / summary / macro / accountAnalysis / tokenDiscovery / tokenAnalysis), `callback.action` | `speed` (`fast` / `expert`), per-action extras |
+
+`telegram_bot` does **not** take a `message` field — the message body is auto-composed from the query `title` + `description` + trigger context. Use `notify` (in-app push) when you want to specify the message text yourself. `allNotifications: true` on `webhook` / `telegram_bot` opts the destination into lifecycle notifications (failed/expired/run-failed) in addition to the trigger fire.
 
 #### Triggers — condition sources
 
@@ -981,14 +992,14 @@ Additional constraints:
 }
 ```
 
-**2) Downside guardrail (telegram):**
+**2) Downside guardrail (telegram_bot):**
 
 ```json
 {
   "title": "ETH downside guardrail (< 2500)",
-  "description": "Risk-off alert: flag if ETH breaks below 2500.",
+  "description": "Risk-off alert: flag if ETH breaks below 2500. The notification body is auto-composed from title + description + trigger context.",
   "conditions": { "AND": [{ "source": "price", "method": "current", "args": { "symbol": "ETH" }, "operator": "<", "value": 2500 }] },
-  "actions": [{ "stepId": "step_1", "type": "telegram", "params": { "message": "ETH fell below 2500" } }],
+  "actions": [{ "stepId": "step_1", "type": "telegram_bot", "params": { "botToken": "<TELEGRAM_BOT_TOKEN>", "chatId": "<TELEGRAM_CHAT_ID>" } }],
   "expiresIn": "24h"
 }
 ```
@@ -1065,7 +1076,7 @@ Additional constraints:
       "operator": "==", "value": true
     }]
   },
-  "actions": [{ "stepId": "step_1", "type": "telegram", "params": { "message": "AI narrative shift detected" } }],
+  "actions": [{ "stepId": "step_1", "type": "telegram_bot", "params": { "botToken": "<TELEGRAM_BOT_TOKEN>", "chatId": "<TELEGRAM_CHAT_ID>" } }],
   "expiresIn": "2d"
 }
 ```
@@ -1156,7 +1167,7 @@ After a query triggers, Auto delivers events via one of three channels:
 | Channel | Best for | Setup |
 |---|---|---|
 | **Webhook** | Production agent automation | `action.type = "webhook"` with signature verification + queue/worker |
-| **Telegram** | Fast human-readable alerts | `action.type = "telegram"` (direct) or webhook→bot relay (custom formatting) |
+| **Telegram** | Fast human-readable alerts | `action.type = "telegram_bot"` with `params.botToken` + `params.chatId` (direct), or webhook→bot relay for custom formatting |
 | **SSE Stream** | Real-time event consumers | `GET /v2/auto/queries/{queryId}/stream` with `x-elfa-api-key` header |
 
 **Query `title` and `description` in notifications:** both fields are embedded in every
@@ -1251,7 +1262,7 @@ Operational checklist:
 - Deduplicate by `X-Auto-Event-Id` in durable storage.
 - Return `2xx` fast, then process asynchronously (queue + worker).
 
-#### Telegram bot setup (for `action.type: "telegram"` or relay)
+#### Telegram bot setup (for `action.type: "telegram_bot"` or relay)
 
 1. Open `@BotFather` in Telegram → `/newbot` → save bot token (treat as secret).
 2. Send any message to the bot (or in a group where the bot is present).
@@ -1463,7 +1474,7 @@ Drafts are API-key-mode only. Not available via x402.
 #### Exchange connections
 
 Required only if you want to use **live trade-execution actions** (beyond `webhook`,
-`notify`, `telegram`, `llm`). Connects your CEX account to Auto so triggered queries can
+`notify`, `telegram_bot`, `llm`). Connects your CEX account to Auto so triggered queries can
 place orders on your behalf.
 
 | Endpoint | Method | Auth | Description |
