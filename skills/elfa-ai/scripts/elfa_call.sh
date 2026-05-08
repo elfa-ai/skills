@@ -68,10 +68,15 @@ Auto endpoint HMAC signing:
   HMAC conditional (signed if --hmac-secret is provided; allowed without for
   notification-only EQL actions like notify / telegram_bot / webhook):
     POST   /v2/auto/queries                              (create)
-    POST   /v2/auto/queries/{queryId}/cancel             (cancel — preferred)
-    DELETE /v2/auto/queries/{queryId}                    (cancel — legacy)
+    POST   /v2/auto/queries/{queryId}/cancel             (cancel active query)
+    DELETE /v2/auto/queries/{queryId}                    (delete terminal query)
     POST   /v2/auto/queries/drafts                       (upsert draft)
     POST   /v2/auto/queries/drafts/{draftId}/convert     (draft → active query)
+
+  Cancel and delete are distinct operations:
+    - POST /cancel: only on active/recurring queries (returns 409 if terminal)
+    - DELETE: only on terminal queries — triggered/expired/cancelled/failed
+      (returns 409 if active; you must cancel first)
 
   HMAC never required (signing is skipped even if --hmac-secret is set):
     POST   /v2/auto/chat                                 (Builder Chat — produces drafts only)
@@ -111,9 +116,11 @@ Examples:
   # Auto: create a query with trade action (HMAC required — server returns 401 without it)
   ./elfa_call.sh /v2/auto/queries -d '{"query":{"actions":[{"type":"market_order",...}],...}}' --hmac-secret "$ELFA_HMAC_SECRET"
 
-  # Auto: cancel a query (HMAC OPTIONAL — depends on stored query's action type)
+  # Auto: cancel an active query (HMAC OPTIONAL — depends on stored query's action type)
   ./elfa_call.sh /v2/auto/queries/q_123/cancel -X POST
-  ./elfa_call.sh /v2/auto/queries/q_123 -X DELETE  # legacy form
+
+  # Auto: delete a terminal query (HMAC OPTIONAL — depends on stored query's action type)
+  ./elfa_call.sh /v2/auto/queries/q_123 -X DELETE  # only after status is terminal
 
   # Auto: upsert a draft (HMAC OPTIONAL — depends on body's action type)
   ./elfa_call.sh /v2/auto/queries/drafts -d '{"query":{...}}'
@@ -224,7 +231,7 @@ if [[ "$ORIGINAL_ENDPOINT" == /v2/auto/* ]]; then
       /queries/drafts/*)            ;;  # GET/DELETE specific draft (no side effects)
       /queries/drafts)              HMAC_BEHAVIOR="conditional" ;;  # POST upsert depends on body action
       /queries/*/cancel)            HMAC_BEHAVIOR="conditional" ;;  # POST cancel depends on stored query action
-      /queries/*)                   HMAC_BEHAVIOR="conditional" ;;  # DELETE /queries/:id (legacy cancel)
+      /queries/*)                   HMAC_BEHAVIOR="conditional" ;;  # DELETE /queries/:id (delete terminal query — only on triggered/expired/cancelled/failed)
       /queries)                     HMAC_BEHAVIOR="conditional" ;;  # POST create depends on body action
       /exchanges)                   HMAC_BEHAVIOR="required" ;;  # POST connect: trade gateway
       /exchanges/*)                 HMAC_BEHAVIOR="required" ;;  # DELETE disconnect: trade gateway

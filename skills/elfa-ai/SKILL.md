@@ -132,8 +132,8 @@ _Query lifecycle:_
 | `/v2/auto/queries` | POST | Create and activate a query | Conditional |
 | `/v2/auto/queries` | GET | List queries | API key |
 | `/v2/auto/queries/:queryId` | GET | Poll query status and executions (resolves query or draft) | API key |
-| `/v2/auto/queries/:queryId/cancel` | POST | Cancel a query (preferred form) | Conditional |
-| `/v2/auto/queries/:queryId` | DELETE | Cancel a query (legacy form) | Conditional |
+| `/v2/auto/queries/:queryId/cancel` | POST | Cancel an `active` / `recurring` query (returns `409` if status is terminal) | Conditional |
+| `/v2/auto/queries/:queryId` | DELETE | Delete a terminal query — only when status is `triggered` / `expired` / `cancelled` / `failed` (returns `409` otherwise; active queries must be cancelled first) | Conditional |
 | `/v2/auto/queries/:queryId/stream` | GET | Stream notifications via SSE | API key |
 
 _Query drafts (editable, not yet active):_
@@ -183,13 +183,13 @@ _Other:_
 | `/x402/v2/auto/queries/validate` | POST | Validate EQL and preview cost |
 | `/x402/v2/auto/queries` | POST | Create and activate a query |
 | `/x402/v2/auto/queries/:queryId` | POST | Poll query status (POST, not GET) |
-| `/x402/v2/auto/queries/:queryId` | DELETE | Cancel a query |
+| `/x402/v2/auto/queries/:queryId/cancel` | POST | Cancel an `active` / `recurring` query |
 | `/x402/v2/auto/queries/:queryId/stream` | GET | Stream notifications via SSE |
 | `/x402/v2/auto/queries/:queryId/sessions` | POST | List LLM sessions (POST, not GET) |
 | `/x402/v2/auto/queries/:queryId/sessions/:sessionId` | POST | Get LLM session details (POST, not GET) |
 | `/x402/v2/auto/validate-tradable-symbol/:symbol` | GET | Check whether a symbol is tradable as a Hyperliquid perp |
 
-> **Note on x402 Auto scope.** Trade execution actions are not available via x402. Exchange connections, drafts, and executions endpoints are API-key-mode only. x402 Auto covers the core monitoring lifecycle (chat, validate, create, poll, cancel, stream, sessions).
+> **Note on x402 Auto scope.** Trade execution actions are not available via x402. Exchange connections, drafts, executions, and the terminal-query DELETE endpoint are API-key-mode only. x402 Auto covers the core monitoring lifecycle (chat, validate, create, poll, cancel, stream, sessions).
 
 For full parameter details, see the [Elfa API documentation](https://docs.elfa.ai).
 
@@ -363,6 +363,33 @@ Auto evaluates continuously and fires actions when conditions resolve to true.
 
 Full Auto docs: [docs.elfa.ai/auto/overview](https://docs.elfa.ai/auto/overview)
 
+#### Lifecycle Sequence (Enforced)
+
+For API key lifecycle/cleanup calls, preserve this order when each operation applies:
+
+1. `POST /v2/auto/queries/validate` — validate EQL and preview cost
+2. `POST /v2/auto/queries` — create and activate
+3. `POST /v2/auto/queries/{queryId}/cancel` — only if stopping an `active` / `recurring` query before it reaches terminal status (returns `409` once terminal)
+4. `DELETE /v2/auto/queries/{queryId}` — only after status is terminal (`triggered` / `expired` / `cancelled` / `failed`); active queries must be cancelled first
+
+> **Cancel and delete are distinct operations.** `POST /cancel` flips an active query to `cancelled` (terminal). `DELETE` removes the record entirely and only works on terminal queries. Sending `DELETE` on an active query returns `409 Conflict`.
+
+For trade actions (`market_order`, `limit_order`, or `llm` with a trade callback), preflight `GET /v2/auto/exchanges` before create — without an active exchange connection the trigger fires but the order placement fails.
+
+x402 mode supports the same lifecycle except: x402 has no `DELETE` endpoint (cancel-only), and trade actions are not available via x402.
+
+#### Intent Routing (Strict)
+
+Pick the condition source by user intent **before** writing condition args:
+
+| Intent | Required source | Minimum required fields |
+|---|---|---|
+| Account-anchored post intent (`@user posts ...`) | `source: "tweet"` | `args.username` (no `@`), `args.text`, `args.minConfidence` (use `80` if user gives no threshold) |
+| World event intent (ETF approval, exploit, sanctions, etc.) | `source: "news"` | `args.text`, `args.minConfidence` (use `80` if user gives no threshold) |
+| Fuzzy world-state predicate not naturally expressible as a post or event | `source: "llm"` | `method: "athena_condition"`, `args.query`, `args.period` (`>= 1h`) |
+
+When the prompt is account-anchored, **start with `tweet`** — do not route to `news` or `llm` first. When the prompt is event-anchored without a specific account, start with `news`. Use `llm` (`athena_condition`) only when the predicate cannot reasonably be matched against a post or event.
+
 #### When to suggest Auto
 
 - User wants alerts based on **price thresholds** ("alert me when BTC crosses 100k")
@@ -502,7 +529,8 @@ execution and exchange linking continue to require HMAC unconditionally.
 |---|---|
 | `POST /v2/auto/queries`, `POST /v2/auto/queries/drafts` | Request body's `query.actions[*].type` |
 | `POST /v2/auto/queries/drafts/:id/convert` | Stored draft's actions |
-| `POST /v2/auto/queries/:id/cancel`, `DELETE /v2/auto/queries/:id` | Stored query's actions |
+| `POST /v2/auto/queries/:id/cancel` (cancel active query) | Stored query's actions |
+| `DELETE /v2/auto/queries/:id` (delete terminal query) | Stored query's actions |
 
 If the lookup fails or the action type is unknown, HMAC is enforced (fail-safe). Unknown
 action types added in future API versions default to requiring HMAC, so always-signing
@@ -517,9 +545,9 @@ HMAC — linking an exchange is the gateway to trade execution.
 
 **Why this matters for agents.** An agent that only ever sends `notify` / `telegram_bot` /
 `webhook` actions can call `POST /v2/auto/queries`, `POST /v2/auto/queries/:id/cancel`,
-etc. with just `x-elfa-api-key` — no HMAC secret provisioning required. Agents that need
-trade execution must still configure `ELFA_HMAC_SECRET` for the trade-flavoured calls and
-for exchange linking.
+`DELETE /v2/auto/queries/:id`, etc. with just `x-elfa-api-key` — no HMAC secret
+provisioning required. Agents that need trade execution must still configure
+`ELFA_HMAC_SECRET` for the trade-flavoured calls and for exchange linking.
 
 #### x402 Auto (keyless agent mode)
 
@@ -550,7 +578,8 @@ existing queries/sessions may become inaccessible.
 | `POST /v2/auto/queries/validate` | Free | Returns cost estimate — always call before Create |
 | `POST /v2/auto/queries/preview` | Free | Preview without creating |
 | `GET /v2/auto/queries/*` (list, poll, stream, sessions) | Free | |
-| `DELETE /v2/auto/queries/:queryId` (Cancel) | Free | |
+| `POST /v2/auto/queries/:queryId/cancel` (Cancel active query) | Free | |
+| `DELETE /v2/auto/queries/:queryId` (Delete terminal query) | Free | |
 | `GET /v2/auto/validate-tradable-symbol/:symbol` | Free | |
 
 > Reference USD values for Create: baseline `$0.045`, fast call `+$0.045`, expert call `+$0.162`. Use `/queries/validate` to preview exact cost before committing.
@@ -594,9 +623,12 @@ const response = await x402Fetch(
 
 1. `POST /v2/auto/chat` — Ask Builder Chat to draft a query
 2. `POST /v2/auto/queries/validate` — Validate EQL and preview cost
-3. `POST /v2/auto/queries` — Create and activate
-4. `GET /v2/auto/queries/{queryId}/stream` — Stream notifications (or poll)
-5. `GET /v2/auto/queries/{queryId}/sessions` + `/sessions/{sessionId}` — Fetch LLM output (if using `llm` action)
+3. (Trade actions only) `GET /v2/auto/exchanges` — Confirm an active exchange connection
+4. `POST /v2/auto/queries` — Create and activate
+5. `GET /v2/auto/queries/{queryId}/stream` — Stream notifications (or poll)
+6. `GET /v2/auto/queries/{queryId}/sessions` + `/sessions/{sessionId}` — Fetch LLM output (if using `llm` action)
+7. (Optional cleanup) `POST /v2/auto/queries/{queryId}/cancel` — Cancel only while `active` / `recurring` (returns `409` if already terminal)
+8. (Optional cleanup) `DELETE /v2/auto/queries/{queryId}` — Delete only after terminal (`triggered` / `expired` / `cancelled` / `failed`); rejects active queries with `409`
 
 **x402 mode (`/x402/v2/auto/*`):**
 
@@ -605,6 +637,7 @@ const response = await x402Fetch(
 3. `POST /x402/v2/auto/queries` — Create and activate
 4. `GET /x402/v2/auto/queries/{queryId}/stream` — Stream notifications (or poll via POST)
 5. `POST /x402/v2/auto/queries/{queryId}/sessions` + `/sessions/{sessionId}` — Fetch LLM output
+6. (Optional cleanup) `POST /x402/v2/auto/queries/{queryId}/cancel` — Cancel only while `active` / `recurring`. (x402 has no terminal-delete endpoint.)
 
 **Always validate before create.** Validate returns structured errors you can iterate on
 without spending credits.
