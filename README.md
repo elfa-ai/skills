@@ -179,7 +179,7 @@ Help me build a multi-condition trigger for BTC + ETH breakout confirmation
 | `/v2/auto/queries/drafts` | Upsert, list, preview, convert, delete query drafts |
 | `/v2/auto/executions` | List and get trigger execution records |
 | `/v2/auto/exchanges` | Connect, list, disconnect exchange integrations |
-| `/v2/auto/validate-symbol/:symbol` | Check symbol support for conditions |
+| `/v2/auto/validate-tradable-symbol/:symbol` | Check whether a symbol is tradable as a Hyperliquid perp (pre-flight for `market_order`, `limit_order`, or `llm` trade callbacks) |
 
 Auto endpoints require HMAC signing for trade-action mutations (`market_order`, `limit_order`) and exchange linking in API key mode; notification-only mutations (`notify`, `telegram_bot`, `webhook`) skip HMAC. x402 mode uses `x-elfa-agent-secret` instead. Always-signing remains safe — signed requests are accepted on every route. See [Auto docs](https://docs.elfa.ai/auto/overview).
 

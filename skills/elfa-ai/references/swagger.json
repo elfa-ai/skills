@@ -326,12 +326,15 @@
 				"additionalProperties": false
 			},
 			"MentionV2": {
+				"description": "A single sanitized mention returned by V2 data endpoints.\n\nV2 never returns raw tweet text or content — use `link` to fetch the original\ntweet if needed. `mentionedAt` is an ISO 8601 string.",
 				"properties": {
 					"tweetId": {
-						"type": "string"
+						"type": "string",
+						"description": "Tweet ID (string to preserve precision across 64-bit IDs)."
 					},
 					"link": {
-						"type": "string"
+						"type": "string",
+						"description": "URL to the source tweet."
 					},
 					"likeCount": {
 						"type": "number",
@@ -364,7 +367,8 @@
 						"nullable": true
 					},
 					"mentionedAt": {
-						"type": "string"
+						"type": "string",
+						"description": "ISO 8601 timestamp (e.g. \"2026-04-18T15:07:49+00:00\"). Not a unix timestamp."
 					},
 					"type": {
 						"type": "string",
@@ -392,22 +396,8 @@
 							"ct",
 							"smart"
 						],
-						"type": "object"
-					},
-					"account": {
-						"properties": {
-							"isVerified": {
-								"type": "boolean"
-							},
-							"username": {
-								"type": "string"
-							}
-						},
-						"required": [
-							"isVerified",
-							"username"
-						],
-						"type": "object"
+						"type": "object",
+						"description": "Reposts broken down by audience: `smart` = smart accounts, `ct` = crypto-Twitter accounts."
 					}
 				},
 				"required": [
@@ -468,6 +458,113 @@
 				"type": "object",
 				"additionalProperties": false
 			},
+			"KeywordMentionV2": {
+				"description": "Mention returned by `/v2/data/keyword-mentions`. Includes minimal account\ninfo; no follower counts, display name, bio, or account ID are returned.",
+				"properties": {
+					"tweetId": {
+						"type": "string",
+						"description": "Tweet ID (string to preserve precision across 64-bit IDs)."
+					},
+					"link": {
+						"type": "string",
+						"description": "URL to the source tweet."
+					},
+					"likeCount": {
+						"type": "number",
+						"format": "double",
+						"nullable": true
+					},
+					"repostCount": {
+						"type": "number",
+						"format": "double",
+						"nullable": true
+					},
+					"viewCount": {
+						"type": "number",
+						"format": "double",
+						"nullable": true
+					},
+					"quoteCount": {
+						"type": "number",
+						"format": "double",
+						"nullable": true
+					},
+					"replyCount": {
+						"type": "number",
+						"format": "double",
+						"nullable": true
+					},
+					"bookmarkCount": {
+						"type": "number",
+						"format": "double",
+						"nullable": true
+					},
+					"mentionedAt": {
+						"type": "string",
+						"description": "ISO 8601 timestamp (e.g. \"2026-04-18T15:07:49+00:00\"). Not a unix timestamp."
+					},
+					"type": {
+						"type": "string",
+						"enum": [
+							"repost",
+							"post",
+							"quote",
+							"reply",
+							"note",
+							"article"
+						]
+					},
+					"repostBreakdown": {
+						"properties": {
+							"ct": {
+								"type": "number",
+								"format": "double"
+							},
+							"smart": {
+								"type": "number",
+								"format": "double"
+							}
+						},
+						"required": [
+							"ct",
+							"smart"
+						],
+						"type": "object",
+						"description": "Reposts broken down by audience: `smart` = smart accounts, `ct` = crypto-Twitter accounts."
+					},
+					"account": {
+						"properties": {
+							"isVerified": {
+								"type": "boolean"
+							},
+							"username": {
+								"type": "string"
+							}
+						},
+						"required": [
+							"isVerified",
+							"username"
+						],
+						"type": "object",
+						"description": "Minimal account info for the author. Only `username` and `isVerified` are\nreturned — no id, display name, follower count, or bio. May be omitted if\nthe underlying record is missing an account name."
+					}
+				},
+				"required": [
+					"tweetId",
+					"link",
+					"likeCount",
+					"repostCount",
+					"viewCount",
+					"quoteCount",
+					"replyCount",
+					"bookmarkCount",
+					"mentionedAt",
+					"type",
+					"repostBreakdown"
+				],
+				"type": "object",
+				"additionalProperties": false
+			},
 			"KeywordMentionsResponseV2": {
 				"properties": {
 					"success": {
@@ -475,14 +572,15 @@
 					},
 					"data": {
 						"items": {
-							"$ref": "#/components/schemas/MentionV2"
+							"$ref": "#/components/schemas/KeywordMentionV2"
 						},
 						"type": "array"
 					},
 					"metadata": {
 						"properties": {
 							"cursor": {
-								"type": "string"
+								"type": "number",
+								"format": "double"
 							},
 							"total": {
 								"type": "number",
@@ -492,7 +590,8 @@
 						"required": [
 							"total"
 						],
-						"type": "object"
+						"type": "object",
+						"description": "Pagination metadata. `cursor` is a millisecond timestamp — pass it back as\nthe `cursor` query param to fetch the next page. Absent on the final page.\n`total` may be capped at 10000 for performance."
 					}
 				},
 				"required": [
@@ -1160,7 +1259,7 @@
 				"type": "object",
 				"additionalProperties": false
 			},
-			"ApiKeyValidateSymbolResponse": {
+			"ApiKeyValidateTradableSymbolResponse": {
 				"properties": {
 					"supported": {
 						"type": "string",
@@ -1168,7 +1267,7 @@
 							"true",
 							"false"
 						],
-						"description": "Whether the symbol is supported for Auto query conditions"
+						"description": "Whether the symbol is tradable as a Hyperliquid perpetual"
 					}
 				},
 				"required": [
@@ -1390,6 +1489,11 @@
 				"additionalProperties": false
 			},
 			"ApiKeyCancelQueryResponse": {
+				"properties": {},
+				"type": "object",
+				"additionalProperties": {}
+			},
+			"ApiKeyDeleteQueryResponse": {
 				"properties": {},
 				"type": "object",
 				"additionalProperties": {}
@@ -1645,7 +1749,7 @@
 				"type": "object",
 				"additionalProperties": false
 			},
-			"ValidateSymbolResponse": {
+			"ValidateTradableSymbolResponse": {
 				"properties": {
 					"supported": {
 						"type": "string",
@@ -1653,7 +1757,7 @@
 							"true",
 							"false"
 						],
-						"description": "Whether the symbol is supported for Auto query conditions"
+						"description": "Whether the symbol is tradable as a Hyperliquid perpetual"
 					}
 				},
 				"required": [
@@ -1812,7 +1916,7 @@
 						"enum": [
 							"webhook",
 							"notify",
-							"telegram",
+							"telegram_bot",
 							"llm"
 						],
 						"description": "Action type to execute when conditions are met"
@@ -2201,7 +2305,7 @@
 				"description": "Simple health check to verify API availability",
 				"summary": "Health check endpoint",
 				"tags": [
-					"v2"
+					"v2 System"
 				],
 				"security": [],
 				"parameters": []
@@ -2266,7 +2370,7 @@
 				"description": "Retrieve the current status and usage of your API key",
 				"summary": "API key status",
 				"tags": [
-					"v2"
+					"v2 System"
 				],
 				"security": [
 					{
@@ -2318,7 +2422,7 @@
 				"description": "This experimental endpoint is under active development and its behavior may change without notice.\nUse with caution in production environments.\n\nRetrieve trending tokens based on highest mentions count,\nfiltered by a minimum mention threshold over a specified time period.\n\nNote: You must provide EITHER timeWindow OR both from and to parameters.\nIf both timeWindow and from/to are provided, from/to takes priority.",
 				"summary": "Trending tokens",
 				"tags": [
-					"v2"
+					"v2 Aggregations"
 				],
 				"security": [
 					{
@@ -2429,7 +2533,7 @@
 				"description": "This experimental endpoint is under active development and its behavior may change without notice.\nUse with caution in production environments.\n\nRetrieve smart stats given username",
 				"summary": "Smart stats of accounts",
 				"tags": [
-					"v2"
+					"v2 Account"
 				],
 				"security": [
 					{
@@ -2461,32 +2565,31 @@
 									"$ref": "#/components/schemas/TopMentionsResponseV2"
 								},
 								"examples": {
-									"success": {
-										"summary": "Example successful response",
+									"Example 1": {
 										"value": {
 											"success": true,
 											"data": [
 												{
-													"tweetId": "string",
-													"link": "string",
-													"likeCount": 1,
-													"repostCount": 1,
-													"viewCount": 1,
-													"quoteCount": 1,
-													"replyCount": 1,
-													"bookmarkCount": 1,
-													"mentionedAt": "string",
-													"type": "repost",
+													"tweetId": "2045186844212756697",
+													"link": "https://x.com/BillyM2k/status/2045186844212756697",
+													"likeCount": 465,
+													"repostCount": 45,
+													"viewCount": 15914,
+													"quoteCount": 10,
+													"replyCount": 62,
+													"bookmarkCount": 12,
+													"mentionedAt": "2026-04-17T17:05:16+00:00",
+													"type": "post",
 													"repostBreakdown": {
-														"ct": 1,
-														"smart": 1
+														"smart": 0,
+														"ct": 0
 													}
 												}
 											],
 											"metadata": {
-												"pageSize": 1,
+												"total": 52,
 												"page": 1,
-												"total": 1
+												"pageSize": 2
 											}
 										}
 									}
@@ -2498,10 +2601,10 @@
 						"description": "Unauthorized"
 					}
 				},
-				"description": "Returns the most significant mentions for a given ticker symbol, ranked by relevance and engagement within a specified time window.",
+				"description": "Returns the most significant mentions for a given ticker symbol, ranked by\nengagement (viewCount → mentionedAt → relevance) within a specified time\nwindow.\n\n**Response shape.** The response envelope is `{ success, data, metadata }`.\n`data` is a flat array of mentions; pagination state lives in `metadata`\n(`total`, `page`, `pageSize`) — never merged into the top level.\n\n**No tweet content.** V2 does not return raw tweet text. Use the `link`\nfield to fetch the original tweet via the Twitter/X API if needed, or use\nthe SDK's `fetchRawTweets: true` option with a Twitter bearer token.\n\n**No account object.** Unlike `/v2/data/keyword-mentions`, this endpoint\ndoes not return an `account` object per mention.\n\n**Field notes.** `mentionedAt` is an ISO 8601 string (not a unix\ntimestamp). `repostBreakdown.smart` counts reposts by smart accounts;\n`repostBreakdown.ct` counts reposts by crypto-Twitter accounts.",
 				"summary": "Top mentions",
 				"tags": [
-					"v2"
+					"v2 Data"
 				],
 				"security": [
 					{
@@ -2510,7 +2613,7 @@
 				],
 				"parameters": [
 					{
-						"description": "The ticker symbol to get mentions for. Prefixing with $ will only return cashtag matches.",
+						"description": "The ticker symbol to get mentions for. Prefixing with `$` will only return cashtag matches.",
 						"in": "query",
 						"name": "ticker",
 						"required": true,
@@ -2593,30 +2696,34 @@
 									"$ref": "#/components/schemas/KeywordMentionsResponseV2"
 								},
 								"examples": {
-									"success": {
-										"summary": "Example successful response",
+									"Example 1": {
 										"value": {
 											"success": true,
 											"data": [
 												{
-													"tweetId": "string",
-													"link": "string",
-													"likeCount": 1,
-													"repostCount": 1,
-													"viewCount": 1,
-													"quoteCount": 1,
-													"replyCount": 1,
-													"bookmarkCount": 1,
-													"mentionedAt": "string",
-													"type": "repost",
+													"tweetId": "2045519677062066348",
+													"link": "https://x.com/BillyM2k/status/2045519677062066348",
+													"likeCount": 0,
+													"repostCount": 0,
+													"viewCount": 0,
+													"quoteCount": 0,
+													"replyCount": 0,
+													"bookmarkCount": 0,
+													"mentionedAt": "2026-04-18T15:07:49+00:00",
+													"type": "post",
+													"account": {
+														"username": "BillyM2k",
+														"isVerified": false
+													},
 													"repostBreakdown": {
-														"ct": 1,
-														"smart": 1
+														"smart": 0,
+														"ct": 0
 													}
 												}
 											],
 											"metadata": {
-												"total": 1
+												"total": 1,
+												"cursor": 1776524869000
 											}
 										}
 									}
@@ -2628,10 +2735,10 @@
 						"description": "Unauthorized"
 					}
 				},
-				"description": "Search mentions by keywords OR account name with time period.",
+				"description": "Search mentions by keywords OR account name within a time period. Either\n`keywords` or `accountName` (or both) must be provided.\n\n**Response shape.** The response envelope is `{ success, data, metadata }`.\n`data` is a flat array of mentions; pagination state lives in `metadata`.\n\n**Cursor pagination.** Unlike `/v2/data/top-mentions` (which uses\n`page`/`pageSize`), this endpoint is cursor-paginated.\n`metadata.cursor` is a millisecond timestamp (number). To fetch the next\npage, pass its value back as the `cursor` query param.\n`metadata.cursor` is absent on the final page. `metadata.total` may be\ncapped at 10000 for performance.\n\n**No tweet content.** V2 does not return raw tweet text. Use the `link`\nfield to fetch the original tweet via the Twitter/X API if needed, or use\nthe SDK's `fetchRawTweets: true` option with a Twitter bearer token.\n\n**Account info.** Each mention includes a minimal `account` object with\nonly `username` and `isVerified`. No id, display name, follower count, or\nbio is returned.\n\n**Field notes.** `mentionedAt` is an ISO 8601 string (not a unix\ntimestamp). `repostBreakdown.smart` counts reposts by smart accounts;\n`repostBreakdown.ct` counts reposts by crypto-Twitter accounts.",
 				"summary": "Multi keyword mentions search",
 				"tags": [
-					"v2"
+					"v2 Data"
 				],
 				"security": [
 					{
@@ -2707,7 +2814,7 @@
 						}
 					},
 					{
-						"description": "Cursor for pagination",
+						"description": "Cursor for pagination (millisecond timestamp from a previous response's `metadata.cursor`)",
 						"in": "query",
 						"name": "cursor",
 						"required": false,
@@ -2766,7 +2873,7 @@
 				"description": "Generate event summaries based on keyword mentions within a time period.\nThis endpoint costs 5 credits total",
 				"summary": "Event summary from keyword mentions (5 credits total)",
 				"tags": [
-					"v2"
+					"v2 Data"
 				],
 				"security": [
 					{
@@ -2873,7 +2980,7 @@
 				"description": "Get trending narratives based on Twitter mentions analysis.\nThis endpoint costs 5 credits total",
 				"summary": "Trending narratives (5 credits total)",
 				"tags": [
-					"v2"
+					"v2 Data"
 				],
 				"security": [
 					{
@@ -2972,7 +3079,7 @@
 				"description": "Retrieve token-related news mentions.",
 				"summary": "Token news mentions",
 				"tags": [
-					"v2"
+					"v2 Data"
 				],
 				"security": [
 					{
@@ -3092,7 +3199,7 @@
 				"description": "Get trending contract addresses mentioned on Twitter/X. Returns contract addresses with mention counts.\n\nNote: You must provide EITHER timeWindow OR both from and to parameters.\nIf both timeWindow and from/to are provided, from/to takes priority.",
 				"summary": "Trending contract addresses on Twitter",
 				"tags": [
-					"v2"
+					"v2 Aggregations"
 				],
 				"security": [
 					{
@@ -3207,7 +3314,7 @@
 				"description": "Get trending contract addresses mentioned on Telegram. Returns contract addresses with mention counts.\n\nNote: You must provide EITHER timeWindow OR both from and to parameters.\nIf both timeWindow and from/to are provided, from/to takes priority.",
 				"summary": "Trending contract addresses on Telegram",
 				"tags": [
-					"v2"
+					"v2 Aggregations"
 				],
 				"security": [
 					{
@@ -3318,7 +3425,7 @@
 				"description": "Send a message to the Elfa AI and receive a complete response.\nSuited for agents and integrations that do not support server-sent events (SSE).\n\n**Session management:** omit `sessionId` to start a new conversation.\nThe response includes a `sessionId` — pass it in subsequent requests to continue the same conversation.\n\n**Analysis types and required fields:**\n- `chat` (default) — general conversation. Requires `message`.\n- `macro` — macro market overview. `message` is optional.\n- `summary` — quick market summary. `message` is optional.\n- `tokenIntro` — token introduction. Requires `assetMetadata` with `symbol`, or `chain` + `contractAddress`.\n- `tokenAnalysis` — token trade setup analysis. Same `assetMetadata` requirements as `tokenIntro`.\n- `accountAnalysis` — Twitter/X account analysis. Requires `assetMetadata.username`.\n\n**`assetMetadata` fields (when applicable):**\n- `symbol` — token ticker symbol (e.g. `\"BTC\"`, `\"$ETH\"`)\n- `chain` — blockchain name (e.g. `\"ethereum\"`, `\"solana\"`)\n- `contractAddress` — token contract address\n- `username` — Twitter/X username for account analysis",
 				"summary": "AI chat",
 				"tags": [
-					"v2"
+					"v2 Chat"
 				],
 				"security": [
 					{
@@ -3407,10 +3514,10 @@
 						}
 					}
 				},
-				"description": "Ask the AI to help you build an EQL query.\n\nThe response message contains the AI's reply in Markdown. When it generates EQL,\nit will be in a JSON code block that you can extract, validate, and submit.\n\nUse `sessionId` in follow-up requests to maintain conversation context.\n\n### Cost\n\nAPI mode: `1 + dynamic` credits\n- base request charge: `1` credit\n- dynamic usage charge: `ceil(request_cost * 750)` credits\n\nIn x402 mode, equivalent reference pricing remains:\n- `fast`: `5 credits` (`$0.045`)\n- `expert`: `18 credits` (`$0.162`)\n\n### Auth\n\nRequired headers:\n```http\nx-elfa-api-key: <api_key>\nx-elfa-timestamp: <unix_seconds>\nx-elfa-signature: <hex_hmac_sha256>\n```\n\nSigning payload:\n```text\ntimestamp + method + path + body\n```\n\nFor this route, sign with `path = \"/chat\"`.\n\n### Request Example\n\n```json\n{\n  \"message\": \"Alert me when BTC breaks 100k\",\n  \"speed\": \"expert\",\n  \"sessionId\": \"optional-session-id\"\n}\n```\n\n### Response Example (200)\n\n```json\n{\n  \"sessionId\": \"session-uuid\",\n  \"response\": \"I can help with that...\",\n  \"title\": \"BTC Breakout Alert\",\n  \"reasoning\": null,\n  \"planIds\": []\n}\n```\n\n> Best practice: persist `sessionId` and reuse it for follow-up prompts so\n> the model keeps context across turns.",
+				"description": "Ask the AI to help you build an EQL query.\n\nThe response message contains the AI's reply in Markdown. When it generates EQL,\nit will be in a JSON code block that you can extract, validate, and submit.\n\nUse `sessionId` in follow-up requests to maintain conversation context.\n\n### Cost\n\nAPI mode: `1 + dynamic` credits\n- base request charge: `1` credit\n- dynamic usage charge: `ceil(request_cost * 750)` credits\n\nIn x402 mode, equivalent reference pricing remains:\n- `fast`: `5 credits` (`$0.045`)\n- `expert`: `18 credits` (`$0.162`)\n\n### Auth\n\nRequired header:\n```http\nx-elfa-api-key: <api_key>\n```\n\nThis route does not require HMAC. Chat produces drafts only; any\nsubsequent activation goes through `POST /queries/drafts/{draftId}/convert`,\nwhich gates trade-flavoured drafts behind HMAC.\n\n### Request Example\n\n```json\n{\n  \"message\": \"Alert me when BTC breaks 100k\",\n  \"speed\": \"expert\",\n  \"sessionId\": \"optional-session-id\"\n}\n```\n\n### Response Example (200)\n\n```json\n{\n  \"sessionId\": \"session-uuid\",\n  \"response\": \"I can help with that...\",\n  \"title\": \"BTC Breakout Alert\",\n  \"reasoning\": null,\n  \"planIds\": []\n}\n```\n\n> Best practice: persist `sessionId` and reuse it for follow-up prompts so\n> the model keeps context across turns.",
 				"summary": "Builder Chat",
 				"tags": [
-					"v2 Auto [BETA]"
+					"v2 Auto"
 				],
 				"security": [
 					{
@@ -3439,16 +3546,16 @@
 				}
 			}
 		},
-		"/v2/auto/validate-symbol/{symbol}": {
+		"/v2/auto/validate-tradable-symbol/{symbol}": {
 			"get": {
-				"operationId": "auto-validate-symbol-v2",
+				"operationId": "auto-validate-tradable-symbol-v2",
 				"responses": {
 					"200": {
 						"description": "Ok",
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ApiKeyValidateSymbolResponse"
+									"$ref": "#/components/schemas/ApiKeyValidateTradableSymbolResponse"
 								},
 								"examples": {
 									"success": {
@@ -3482,10 +3589,10 @@
 						}
 					}
 				},
-				"description": "Check if a symbol is supported for Auto query conditions.\n\n### Cost\n\nFree.\n\n### Auth\n\nRequired header:\n```http\nx-elfa-api-key: <api_key>\n```\n\nHMAC signing is not required for this check.\n\n### Response Example (200)\n\n```json\n{\n  \"supported\": \"true\"\n}\n```",
-				"summary": "Validate Symbol Support",
+				"description": "Check whether a symbol is tradable as a Hyperliquid perpetual.\n\nUse this before submitting an EQL query whose action is `market_order` or\n`limit_order` (or an `llm` callback to either) — those actions only execute\non perps, and the scheduler rejects symbols not present in Hyperliquid's\nperp universe. Spot-only tokens (e.g. `HFUN`) return `\"false\"` here even\nthough they may still be queryable in price/sentiment conditions.\n\n### Cost\n\nFree.\n\n### Auth\n\nRequired header:\n```http\nx-elfa-api-key: <api_key>\n```\n\nHMAC signing is not required for this check.\n\n### Response Example (200)\n\n```json\n{\n  \"supported\": \"true\"\n}\n```",
+				"summary": "Validate Tradable Symbol",
 				"tags": [
-					"v2 Auto [BETA]"
+					"v2 Auto"
 				],
 				"security": [
 					{
@@ -3566,7 +3673,7 @@
 				"description": "Validate EQL syntax and get a cost estimate without creating a query.\nReturns simulation-based cost details when the query is valid.\n\n### Cost\n\nFree.\n\n### Auth\n\nRequired header:\n```http\nx-elfa-api-key: <api_key>\n```\n\nHMAC signing is not required for validate.\n\n### Request Example\n\n```json\n{\n  \"query\": {\n    \"conditions\": {\n      \"AND\": [\n        {\n          \"source\": \"price\",\n          \"method\": \"current\",\n          \"args\": { \"symbol\": \"BTC\" },\n          \"operator\": \">\",\n          \"value\": 100000\n        }\n      ]\n    },\n    \"actions\": [\n      {\n        \"stepId\": \"step_1\",\n        \"type\": \"notify\",\n        \"params\": { \"message\": \"BTC crossed target\" }\n      }\n    ],\n    \"expiresIn\": \"24h\"\n  },\n  \"title\": \"BTC breakout alert\",\n  \"description\": \"Notify when BTC is above 100k so I can review the breakout setup.\"\n}\n```\n\n### Response Example (200)\n\n```json\n{\n  \"valid\": true,\n  \"errors\": [],\n  \"warnings\": [],\n  \"simulationLlmCallsEstimate\": {\n    \"conditionCallsUpperBound\": 1,\n    \"actionCallsUpperBound\": 0,\n    \"conditionCallsBySpeed\": { \"fast\": 1, \"expert\": 0 },\n    \"actionCallsBySpeed\": { \"fast\": 0, \"expert\": 0 }\n  },\n  \"estimatedCost\": {\n    \"credits\": 30,\n    \"price\": \"$0.270\"\n  }\n}\n```\n\n> Best practice: always validate before create to catch schema issues and\n> preview estimated cost.",
 				"summary": "Validate Query",
 				"tags": [
-					"v2 Auto [BETA]"
+					"v2 Auto"
 				],
 				"security": [
 					{
@@ -3701,10 +3808,10 @@
 						}
 					}
 				},
-				"description": "Create and activate a conditional query.\n\n**Allowed action types:** `webhook`, `notify`, `telegram`, `llm`.\n\n### Cost\n\nSimulation-driven estimate (reference values):\n- baseline: `5 credits` (`$0.045`)\n- fast call: `+5 credits` (`+$0.045`)\n- expert call: `+18 credits` (`+$0.162`)\n\n### Auth\n\nRequired headers:\n```http\nx-elfa-api-key: <api_key>\nx-elfa-timestamp: <unix_seconds>\nx-elfa-signature: <hex_hmac_sha256>\n```\n\nSigning payload:\n```text\ntimestamp + method + path + body\n```\n\nFor this route, sign with `path = \"/queries\"`.\n\n### Request Example\n\n```json\n{\n  \"query\": {\n    \"conditions\": {\n      \"AND\": [\n        {\n          \"source\": \"price\",\n          \"method\": \"current\",\n          \"args\": { \"symbol\": \"BTC\" },\n          \"operator\": \">\",\n          \"value\": 100000\n        }\n      ]\n    },\n    \"actions\": [\n      {\n        \"stepId\": \"step_1\",\n        \"type\": \"notify\",\n        \"params\": { \"message\": \"BTC crossed target\" }\n      }\n    ],\n    \"expiresIn\": \"24h\"\n  },\n  \"title\": \"BTC breakout alert\",\n  \"description\": \"Notify when BTC is above 100k\"\n}\n```\n\n### Response Example (201)\n\n```json\n{\n  \"queryId\": \"q_123\",\n  \"status\": \"active\",\n  \"cost\": {\n    \"credits\": 116,\n    \"price\": \"$1.045\"\n  }\n}\n```\n\n> Best practice: call validate first, then create. After creation, wire\n> notifications (`webhook`, `telegram`, or SSE) to a background runner.",
+				"description": "Create and activate a conditional query.\n\n**Allowed action types (API key mode):**\n`webhook`, `notify`, `telegram_bot`, `llm`, `market_order`, `limit_order`.\n\nTrade actions (`market_order`, `limit_order`) require an active exchange\nconnection for the linked user (for example Hyperliquid via\n`POST /v2/auto/exchanges`). Without a connected exchange, query creation\ncan succeed but order execution fails when the trigger fires.\n\n### Cost\n\nSimulation-driven estimate (reference values):\n- baseline: `5 credits` (`$0.045`)\n- fast call: `+5 credits` (`+$0.045`)\n- expert call: `+18 credits` (`+$0.162`)\n\n### Auth\n\nRequired header (always):\n```http\nx-elfa-api-key: <api_key>\n```\n\n**HMAC is conditional** — required when the request body's action is\ntrade-flavoured (`market_order`, `limit_order`, or `llm` whose\n`params.callback.action.type` is `market_order` or `limit_order`). HMAC is\nNOT required for notification-only actions (`notify`, `telegram_bot`,\n`webhook`, or `llm` with a notification callback). Unknown action types\ndefault to requiring HMAC.\n\nWhen HMAC is required, also send:\n```http\nx-elfa-timestamp: <unix_seconds>\nx-elfa-signature: <hex_hmac_sha256>\n```\n\nSigning payload: `timestamp + method + path + body`. For this route, sign\nwith `path = \"/queries\"`. Always-signing clients are supported — HMAC sent\non a notification-only request is accepted.\n\n### Request Example\n\n```json\n{\n  \"query\": {\n    \"conditions\": {\n      \"AND\": [\n        {\n          \"source\": \"price\",\n          \"method\": \"current\",\n          \"args\": { \"symbol\": \"BTC\" },\n          \"operator\": \">\",\n          \"value\": 100000\n        }\n      ]\n    },\n    \"actions\": [\n      {\n        \"stepId\": \"step_1\",\n        \"type\": \"notify\",\n        \"params\": { \"message\": \"BTC crossed target\" }\n      }\n    ],\n    \"expiresIn\": \"24h\"\n  },\n  \"title\": \"BTC breakout alert\",\n  \"description\": \"Notify when BTC is above 100k\"\n}\n```\n\n### Response Example (201)\n\n```json\n{\n  \"queryId\": \"q_123\",\n  \"status\": \"active\",\n  \"cost\": {\n    \"credits\": 116,\n    \"price\": \"$1.045\"\n  }\n}\n```\n\n> Best practice: call validate first, then create. After creation, wire\n> notifications (`webhook`, `telegram_bot`, or SSE) to a background runner.",
 				"summary": "Create Query",
 				"tags": [
-					"v2 Auto [BETA]"
+					"v2 Auto"
 				],
 				"security": [
 					{
@@ -3792,7 +3899,7 @@
 				"description": "List Auto queries for the authenticated API-key user.",
 				"summary": "List Queries",
 				"tags": [
-					"v2 Auto [BETA]"
+					"v2 Auto"
 				],
 				"security": [
 					{
@@ -3897,7 +4004,7 @@
 				"description": "Check query status and execution results.\n\n### Cost\n\nFree.\n\n### Auth\n\nRequired header:\n```http\nx-elfa-api-key: <api_key>\n```\n\n### Request Example\n\nPath parameter:\n- `queryId` (string)\n\n### Response Example (200)\n\n```json\n{\n  \"queryId\": \"q_123\",\n  \"status\": \"active\",\n  \"latestEvaluation\": {\n    \"evaluatedAt\": \"2026-04-01T12:00:00.000Z\",\n    \"wouldTriggerNow\": false\n  },\n  \"executions\": [\n    {\n      \"id\": \"exec_123\",\n      \"queryId\": \"q_123\",\n      \"type\": \"llm\",\n      \"status\": \"failed\",\n      \"error\": {\n        \"code\": \"LLM_ACTION_UPSTREAM_ERROR\",\n        \"message\": \"Failed to execute llm action\"\n      },\n      \"createdAt\": \"2026-04-01T12:00:01.000Z\"\n    }\n  ]\n}\n```\n\n> Best practice: use polling for debugging or backfills. For production\n> delivery, prefer webhook/SSE notifications.",
 				"summary": "Poll Query",
 				"tags": [
-					"v2 Auto [BETA]"
+					"v2 Auto"
 				],
 				"security": [
 					{
@@ -3917,14 +4024,14 @@
 				]
 			},
 			"delete": {
-				"operationId": "auto-cancel-query-v2",
+				"operationId": "auto-delete-query-v2",
 				"responses": {
 					"200": {
 						"description": "Ok",
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ApiKeyCancelQueryResponse"
+									"$ref": "#/components/schemas/ApiKeyDeleteQueryResponse"
 								},
 								"examples": {
 									"success": {
@@ -3956,12 +4063,22 @@
 								}
 							}
 						}
+					},
+					"409": {
+						"description": "Query not in a terminal state",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyAutoErrorResponse"
+								}
+							}
+						}
 					}
 				},
-				"description": "Cancel an active query.\n\n### Cost\n\nFree.\n\n### Auth\n\nRequired headers:\n```http\nx-elfa-api-key: <api_key>\nx-elfa-timestamp: <unix_seconds>\nx-elfa-signature: <hex_hmac_sha256>\n```\n\nSigning payload:\n```text\ntimestamp + method + path + body\n```\n\nFor this route, sign with `path = \"/queries/{queryId}\"` and `body = \"\"`.\n\n### Request Example\n\nPath parameter:\n- `queryId` (string)\n\n### Response Example (200)\n\n```json\n{\n  \"id\": \"q_123\",\n  \"status\": \"cancelled\",\n  \"cancelledAt\": \"2026-04-01T12:00:00.000Z\"\n}\n```\n\n> Best practice: keep cancellation idempotent in your client workflow;\n> treat repeated cancel attempts as safe no-op behavior.",
-				"summary": "Cancel Query",
+				"description": "Delete a terminal query.\n\nOnly queries in a terminal status (`triggered`, `expired`, `cancelled`,\n`failed`) can be deleted. Active queries must be cancelled first.\n\n### Cost\n\nFree.\n\n### Auth\n\nRequired header (always):\n```http\nx-elfa-api-key: <api_key>\n```\n\n**HMAC is conditional** — required when the *stored* query has a\ntrade-flavoured action (`market_order`, `limit_order`, or `llm` callback to\nthose). NOT required when the stored query is notification-only. If the\nstored query cannot be looked up, HMAC is enforced (fail-safe).\n\nWhen HMAC is required, also send:\n```http\nx-elfa-timestamp: <unix_seconds>\nx-elfa-signature: <hex_hmac_sha256>\n```\n\nSigning payload: `timestamp + method + path + body`. For this route, sign\nwith `path = \"/queries/{queryId}\"` and `body = \"\"`.\n\n### Request Example\n\nPath parameter:\n- `queryId` (string)\n\n### Response Example (200)\n\n```json\n{\n  \"id\": \"q_123\",\n  \"deletedAt\": \"2026-04-01T12:00:00.000Z\"\n}\n```",
+				"summary": "Delete Query",
 				"tags": [
-					"v2 Auto [BETA]"
+					"v2 Auto"
 				],
 				"security": [
 					{
@@ -4025,7 +4142,83 @@
 				"description": "Stream query notifications via Server-Sent Events (SSE).\n\n### Cost\n\nFree.\n\n### Auth\n\nRequired header:\n```http\nx-elfa-api-key: <api_key>\n```\n\n### Request Example\n\nPath parameter:\n- `queryId` (string)\n\n### Response Example (200)\n\n- `Content-Type: text/event-stream`\n- stream remains open and emits incremental SSE events\n\n> Best practice: deduplicate SSE events by event id and process with a\n> queue-backed worker for reliable agent execution.",
 				"summary": "Stream Notifications",
 				"tags": [
-					"v2 Auto [BETA]"
+					"v2 Auto"
+				],
+				"security": [
+					{
+						"api_key": []
+					}
+				],
+				"parameters": [
+					{
+						"description": "The unique query identifier",
+						"in": "path",
+						"name": "queryId",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				]
+			}
+		},
+		"/v2/auto/queries/{queryId}/cancel": {
+			"post": {
+				"operationId": "auto-cancel-query-v2",
+				"responses": {
+					"200": {
+						"description": "Ok",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyCancelQueryResponse"
+								},
+								"examples": {
+									"success": {
+										"summary": "Example successful response",
+										"value": {
+											"key": {}
+										}
+									}
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Missing or invalid authentication",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyAutoErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Query not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyAutoErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Query not in a cancellable state",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyAutoErrorResponse"
+								}
+							}
+						}
+					}
+				},
+				"description": "Cancel an active query.\n\nOnly queries in `active` or `recurring` status can be cancelled. Queries\nalready in a terminal state return 409 Conflict.\n\n### Cost\n\nFree.\n\n### Auth\n\nRequired header (always):\n```http\nx-elfa-api-key: <api_key>\n```\n\n**HMAC is conditional** — required when the *stored* query has a\ntrade-flavoured action (`market_order`, `limit_order`, or `llm` callback to\nthose). NOT required when the stored query is notification-only. If the\nstored query cannot be looked up, HMAC is enforced (fail-safe).\n\nWhen HMAC is required, also send:\n```http\nx-elfa-timestamp: <unix_seconds>\nx-elfa-signature: <hex_hmac_sha256>\n```\n\nSigning payload: `timestamp + method + path + body`. For this route, sign\nwith `path = \"/queries/{queryId}/cancel\"` and `body = \"\"`.\n\n### Request Example\n\nPath parameter:\n- `queryId` (string)\n\n### Response Example (200)\n\n```json\n{\n  \"id\": \"q_123\",\n  \"status\": \"cancelled\",\n  \"cancelledAt\": \"2026-04-01T12:00:00.000Z\"\n}\n```\n\n> Best practice: keep cancellation idempotent in your client workflow;\n> treat repeated cancel attempts as safe no-op behavior.",
+				"summary": "Cancel Query",
+				"tags": [
+					"v2 Auto"
 				],
 				"security": [
 					{
@@ -4097,7 +4290,7 @@
 				"description": "List LLM output sessions for a query.\nOnly relevant for queries with `actions[0].type: \"llm\"`.\n\n### Cost\n\nFree.\n\n### Auth\n\nRequired header:\n```http\nx-elfa-api-key: <api_key>\n```\n\n### Request Example\n\nPath parameter:\n- `queryId` (string)\n\n### Response Example (200)\n\n```json\n{\n  \"queryId\": \"q_123\",\n  \"sessions\": [\n    {\n      \"sessionId\": \"s_1\",\n      \"status\": \"completed\",\n      \"executedAt\": \"2026-04-01T12:00:00.000Z\"\n    }\n  ]\n}\n```\n\n> Best practice: store `sessionId` values from executions so you can fetch\n> full analysis records only when needed.",
 				"summary": "List LLM Sessions",
 				"tags": [
-					"v2 Auto [BETA]"
+					"v2 Auto"
 				],
 				"security": [
 					{
@@ -4163,7 +4356,7 @@
 				"description": "Get full LLM analysis output for a specific session.\n\n### Cost\n\nFree.\n\n### Auth\n\nRequired header:\n```http\nx-elfa-api-key: <api_key>\n```\n\n### Request Example\n\nPath parameters:\n- `queryId` (string)\n- `sessionId` (string)\n\n### Response Example (200)\n\n```json\n{\n  \"sessionId\": \"s_1\",\n  \"queryId\": \"q_123\",\n  \"title\": \"Token analysis\",\n  \"analysisType\": \"tokenAnalysis\",\n  \"createdAt\": \"2026-04-01T12:00:00.000Z\",\n  \"messages\": [\n    {\n      \"query\": \"Analyze BTC\",\n      \"response\": \"...\",\n      \"status\": \"completed\",\n      \"analysisType\": \"tokenAnalysis\",\n      \"timestamp\": \"2026-04-01T12:00:00.000Z\",\n      \"trades\": []\n    }\n  ]\n}\n```\n\n> Best practice: treat top-level and message-level fields as nullable and\n> handle partial records defensively in your parser.",
 				"summary": "LLM Session Details",
 				"tags": [
-					"v2 Auto [BETA]"
+					"v2 Auto"
 				],
 				"security": [
 					{
@@ -4238,7 +4431,7 @@
 				"description": "Preview a query without creating it.",
 				"summary": "Preview Query",
 				"tags": [
-					"v2 Auto [BETA]"
+					"v2 Auto"
 				],
 				"security": [
 					{
@@ -4328,7 +4521,7 @@
 				"description": "List editable query drafts.",
 				"summary": "List Query Drafts",
 				"tags": [
-					"v2 Auto [BETA]"
+					"v2 Auto"
 				],
 				"security": [
 					{
@@ -4414,10 +4607,10 @@
 						}
 					}
 				},
-				"description": "Create or update a query draft.",
+				"description": "Create or update a query draft.\n\n### Auth\n\nRequired header (always):\n```http\nx-elfa-api-key: <api_key>\n```\n\n**HMAC is conditional** — required when the request body's action is\ntrade-flavoured (`market_order`, `limit_order`, or `llm` callback to\nthose). NOT required for notification-only actions. The gate exists to\nprevent a leaked API key from race-replacing a notification-only draft\nwith a trade draft before it is converted.\n\nWhen HMAC is required, also send:\n```http\nx-elfa-timestamp: <unix_seconds>\nx-elfa-signature: <hex_hmac_sha256>\n```\n\nSigning payload: `timestamp + method + path + body`. For this route, sign\nwith `path = \"/queries/drafts\"`.",
 				"summary": "Upsert Query Draft",
 				"tags": [
-					"v2 Auto [BETA]"
+					"v2 Auto"
 				],
 				"security": [
 					{
@@ -4518,7 +4711,7 @@
 				"description": "Get a specific query draft (legacy; prefer GET /queries/{queryId} which resolves query or draft).",
 				"summary": "Get Query Draft",
 				"tags": [
-					"v2 Auto [BETA]"
+					"v2 Auto"
 				],
 				"security": [
 					{
@@ -4581,7 +4774,7 @@
 				"description": "Delete a query draft.",
 				"summary": "Delete Query Draft",
 				"tags": [
-					"v2 Auto [BETA]"
+					"v2 Auto"
 				],
 				"security": [
 					{
@@ -4646,7 +4839,7 @@
 				"description": "Preview a stored query draft.",
 				"summary": "Preview Query Draft",
 				"tags": [
-					"v2 Auto [BETA]"
+					"v2 Auto"
 				],
 				"security": [
 					{
@@ -4726,10 +4919,10 @@
 						}
 					}
 				},
-				"description": "Convert a draft into an active query.\n\nRequires HMAC request signing.",
+				"description": "Convert a draft into an active query.\n\n### Auth\n\nRequired header (always):\n```http\nx-elfa-api-key: <api_key>\n```\n\n**HMAC is conditional** — required when the *stored* draft has a\ntrade-flavoured action (`market_order`, `limit_order`, or `llm` callback\nto those). NOT required when the draft is notification-only. If the draft\ncannot be looked up, HMAC is enforced (fail-safe).\n\nWhen HMAC is required, also send:\n```http\nx-elfa-timestamp: <unix_seconds>\nx-elfa-signature: <hex_hmac_sha256>\n```\n\nSigning payload: `timestamp + method + path + body`. For this route, sign\nwith `path = \"/queries/drafts/{draftId}/convert\"` and `body = \"\"`.",
 				"summary": "Convert Query Draft",
 				"tags": [
-					"v2 Auto [BETA]"
+					"v2 Auto"
 				],
 				"security": [
 					{
@@ -4784,7 +4977,7 @@
 				"description": "List execution records.",
 				"summary": "List Executions",
 				"tags": [
-					"v2 Auto [BETA]"
+					"v2 Auto"
 				],
 				"security": [
 					{
@@ -4883,7 +5076,7 @@
 				"description": "Get a single execution record.",
 				"summary": "Get Execution",
 				"tags": [
-					"v2 Auto [BETA]"
+					"v2 Auto"
 				],
 				"security": [
 					{
@@ -4938,7 +5131,7 @@
 				"description": "List connected exchanges.",
 				"summary": "List Exchanges",
 				"tags": [
-					"v2 Auto [BETA]"
+					"v2 Auto"
 				],
 				"security": [
 					{
@@ -5010,7 +5203,7 @@
 				"description": "Connect an exchange integration.\n\nRequires HMAC request signing.",
 				"summary": "Connect Exchange",
 				"tags": [
-					"v2 Auto [BETA]"
+					"v2 Auto"
 				],
 				"security": [
 					{
@@ -5030,10 +5223,10 @@
 									"summary": "Example request",
 									"value": {
 										"exchange": "hyperliquid",
-										"credentialType": "api_key",
+										"credentialType": "agent_wallet",
 										"metadata": {
-											"label": "primary-account",
-											"accountId": "acc_123"
+											"masterAddress": "0x1111111111111111111111111111111111111111",
+											"agentAddress": "0x2222222222222222222222222222222222222222"
 										}
 									}
 								}
@@ -5089,7 +5282,7 @@
 				"description": "Disconnect an exchange integration.\n\nRequires HMAC request signing.",
 				"summary": "Disconnect Exchange",
 				"tags": [
-					"v2 Auto [BETA]"
+					"v2 Auto"
 				],
 				"security": [
 					{
@@ -5150,7 +5343,7 @@
 				"description": "Retrieve trending tokens based on mention activity and momentum.\n\n**Cost:** 1 credit ($0.009). Requires x402 payment.",
 				"summary": "Trending tokens",
 				"tags": [
-					"x402"
+					"x402 Aggregations"
 				],
 				"security": [],
 				"parameters": [
@@ -5251,7 +5444,7 @@
 				"description": "Retrieve smart account statistics for a username.\n\n**Cost:** 1 credit ($0.009). Requires x402 payment.",
 				"summary": "Smart stats of accounts",
 				"tags": [
-					"x402"
+					"x402 Account"
 				],
 				"security": [],
 				"parameters": [
@@ -5321,7 +5514,7 @@
 				"description": "Returns the most significant mentions for a given ticker symbol.\n\n**Cost:** 1 credit ($0.009). Requires x402 payment.",
 				"summary": "Top mentions",
 				"tags": [
-					"x402"
+					"x402 Data"
 				],
 				"security": [],
 				"parameters": [
@@ -5444,7 +5637,7 @@
 				"description": "Search mentions by keywords or account with cursor pagination.\n\n**Cost:** 1 credit ($0.009). Requires x402 payment.",
 				"summary": "Multi keyword mentions search",
 				"tags": [
-					"x402"
+					"x402 Data"
 				],
 				"security": [],
 				"parameters": [
@@ -5571,7 +5764,7 @@
 				"description": "Get event summary generated from keyword mention windows.\n\n**Cost:** 5 credits ($0.045). Requires x402 payment.",
 				"summary": "Event summary from keyword mentions (5 credits total)",
 				"tags": [
-					"x402"
+					"x402 Data"
 				],
 				"security": [],
 				"parameters": [
@@ -5673,7 +5866,7 @@
 				"description": "Analyze narrative trends from recent market discussions.\n\n**Cost:** 5 credits ($0.045). Requires x402 payment.",
 				"summary": "Trending narratives (5 credits total)",
 				"tags": [
-					"x402"
+					"x402 Data"
 				],
 				"security": [],
 				"parameters": [
@@ -5764,7 +5957,7 @@
 				"description": "Get token-related news mention feed.\n\n**Cost:** 1 credit ($0.009). Requires x402 payment.",
 				"summary": "Token news mentions",
 				"tags": [
-					"x402"
+					"x402 Data"
 				],
 				"security": [],
 				"parameters": [
@@ -5875,7 +6068,7 @@
 				"description": "Retrieve trending contract addresses on Twitter.\n\n**Cost:** 1 credit ($0.009). Requires x402 payment.",
 				"summary": "Trending contract addresses on Twitter",
 				"tags": [
-					"x402"
+					"x402 Aggregations"
 				],
 				"security": [],
 				"parameters": [
@@ -5980,7 +6173,7 @@
 				"description": "Retrieve trending contract addresses on Telegram.\n\n**Cost:** 1 credit ($0.009). Requires x402 payment.",
 				"summary": "Trending contract addresses on Telegram",
 				"tags": [
-					"x402"
+					"x402 Aggregations"
 				],
 				"security": [],
 				"parameters": [
@@ -6081,7 +6274,7 @@
 				"description": "Send a message to Elfa AI and receive a complete response.\n\n**Cost:** speed based (`fast` 5 credits/$0.045, `expert` 18 credits/$0.162).\nRequires x402 payment.",
 				"summary": "AI chat",
 				"tags": [
-					"x402"
+					"x402 Chat"
 				],
 				"security": [],
 				"parameters": [],
@@ -6151,7 +6344,7 @@
 				"description": "Ask the AI to help you build an EQL query. It can research live market data, suggest strategies, and return ready-to-use EQL JSON.\n\nThe response message contains the AI's reply in Markdown. When it generates EQL,\nit will be in a JSON code block that you can extract, validate, and submit.\n\nUse `sessionId` in follow-up requests to maintain conversation context.\n\n**Cost:** speed based (`fast` 5 credits/$0.045, `expert` 18 credits/$0.162).\nRequires x402 payment.",
 				"summary": "Auto Builder chat",
 				"tags": [
-					"x402"
+					"x402 Auto"
 				],
 				"security": [],
 				"parameters": [],
@@ -6176,16 +6369,16 @@
 				}
 			}
 		},
-		"/x402/v2/auto/validate-symbol/{symbol}": {
+		"/x402/v2/auto/validate-tradable-symbol/{symbol}": {
 			"get": {
-				"operationId": "x402-auto-validate-symbol",
+				"operationId": "x402-auto-validate-tradable-symbol",
 				"responses": {
 					"200": {
 						"description": "Ok",
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ValidateSymbolResponse"
+									"$ref": "#/components/schemas/ValidateTradableSymbolResponse"
 								},
 								"examples": {
 									"success": {
@@ -6199,10 +6392,10 @@
 						}
 					}
 				},
-				"description": "Check if a symbol is supported for Auto query conditions.\n\n**Cost:** Free",
-				"summary": "Validate symbol support",
+				"description": "Check whether a symbol is tradable as a Hyperliquid perpetual.\n\nUse this before submitting an EQL query whose action is `market_order` or\n`limit_order` (or an `llm` callback to either) — those actions only execute\non perps, and the scheduler rejects symbols not present in Hyperliquid's\nperp universe. Spot-only tokens (e.g. `HFUN`) return `\"false\"` here even\nthough they may still be queryable in price/sentiment conditions.\n\n**Cost:** Free",
+				"summary": "Validate tradable symbol",
 				"tags": [
-					"x402"
+					"x402 Auto"
 				],
 				"security": [],
 				"parameters": [
@@ -6259,7 +6452,7 @@
 				"description": "Validate EQL syntax and get a cost estimate without creating a query.\nReturns a simulation-based cost estimate when the query is valid.\nRequires `x-elfa-agent-secret` header.\n\n**Cost:** Free",
 				"summary": "Validate EQL query",
 				"tags": [
-					"x402"
+					"x402 Auto"
 				],
 				"security": [],
 				"parameters": [
@@ -6377,10 +6570,10 @@
 						"description": "EQL validation failed"
 					}
 				},
-				"description": "Create and activate a conditional query that monitors market data and triggers actions when conditions are met.\n\n**Allowed action types:** `webhook`, `notify`, `telegram`, `llm`.\nTrade execution is not available via x402.\n\n**Cost:** Dynamic. Base fee is 5 credits ($0.045) plus simulated LLM calls:\nfast = +5 credits (+$0.045) per call, expert = +18 credits (+$0.162) per call.\nUse the validate endpoint to preview costs.\nRequires `x-elfa-agent-secret` header.\nRequires x402 payment.",
+				"description": "Create and activate a conditional query that monitors market data and triggers actions when conditions are met.\n\n**Allowed action types:** `webhook`, `notify`, `telegram_bot`, `llm`.\nTrade execution is not available via x402.\n\n**Cost:** Dynamic. Base fee is 5 credits ($0.045) plus simulated LLM calls:\nfast = +5 credits (+$0.045) per call, expert = +18 credits (+$0.162) per call.\nUse the validate endpoint to preview costs.\nRequires `x-elfa-agent-secret` header.\nRequires x402 payment.",
 				"summary": "Create conditional query",
 				"tags": [
-					"x402"
+					"x402 Auto"
 				],
 				"security": [],
 				"parameters": [
@@ -6499,7 +6692,7 @@
 				"description": "Check query status and execution results.\nRequires `x-elfa-agent-secret` header.\n\n**Cost:** Free",
 				"summary": "Poll query status",
 				"tags": [
-					"x402"
+					"x402 Auto"
 				],
 				"security": [],
 				"parameters": [
@@ -6521,8 +6714,10 @@
 						}
 					}
 				]
-			},
-			"delete": {
+			}
+		},
+		"/x402/v2/auto/queries/{queryId}/cancel": {
+			"post": {
 				"operationId": "x402-auto-cancel-query",
 				"responses": {
 					"200": {
@@ -6564,12 +6759,22 @@
 								}
 							}
 						}
+					},
+					"409": {
+						"description": "Query not in a cancellable state",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/X402ErrorResponse"
+								}
+							}
+						}
 					}
 				},
 				"description": "Cancel an active query.\nRequires `x-elfa-agent-secret` header.\n\n**Cost:** Free",
 				"summary": "Cancel query",
 				"tags": [
-					"x402"
+					"x402 Auto"
 				],
 				"security": [],
 				"parameters": [
@@ -6636,7 +6841,7 @@
 				"description": "List LLM output sessions for a query.\nOnly relevant for queries with `actions[0].type: \"llm\"`.\nRequires `x-elfa-agent-secret` header.\n\n**Cost:** Free",
 				"summary": "List LLM sessions",
 				"tags": [
-					"x402"
+					"x402 Auto"
 				],
 				"security": [],
 				"parameters": [
@@ -6722,7 +6927,7 @@
 				"description": "Get full LLM analysis output for a specific session, including conversation messages and any trade signals.\nRequires `x-elfa-agent-secret` header.\n\n**Cost:** Free",
 				"summary": "Get LLM session details",
 				"tags": [
-					"x402"
+					"x402 Auto"
 				],
 				"security": [],
 				"parameters": [
@@ -6799,7 +7004,7 @@
 				"description": "Stream query notifications via Server-Sent Events (SSE).\nRequires `x-elfa-agent-secret` header.\n\n**Cost:** Free",
 				"summary": "Stream query notifications",
 				"tags": [
-					"x402"
+					"x402 Auto"
 				],
 				"security": [],
 				"parameters": [
@@ -6832,20 +7037,52 @@
 	],
 	"tags": [
 		{
-			"name": "v2",
-			"description": "API v2 endpoints"
+			"name": "v2 Account",
+			"description": "Account-level data: smart engagement stats for any X/Twitter handle."
 		},
 		{
-			"name": "v2 Auto [BETA]",
-			"description": "Auto conditional query and runner endpoints (Beta)"
+			"name": "v2 Aggregations",
+			"description": "Aggregated trend endpoints: trending tokens and trending contract addresses across Twitter and Telegram."
 		},
 		{
-			"name": "x402",
-			"description": "x402 pay-per-request API endpoints (Beta)"
+			"name": "v2 Data",
+			"description": "Core data endpoints: keyword/top mentions, event summaries, token news, and trending narratives."
+		},
+		{
+			"name": "v2 Chat",
+			"description": "Conversational AI chat endpoint over Elfa data."
+		},
+		{
+			"name": "v2 System",
+			"description": "Meta endpoints: health check and API key status."
+		},
+		{
+			"name": "v2 Auto",
+			"description": "Conditional query builder and runner: create, validate, poll, and stream EQL queries, and manage LLM sessions. (Beta)"
+		},
+		{
+			"name": "x402 Account",
+			"description": "Pay-per-request account-level data (x402)."
+		},
+		{
+			"name": "x402 Aggregations",
+			"description": "Pay-per-request aggregated trend endpoints (x402)."
+		},
+		{
+			"name": "x402 Data",
+			"description": "Pay-per-request core data endpoints (x402)."
+		},
+		{
+			"name": "x402 Chat",
+			"description": "Pay-per-request conversational AI chat endpoint (x402)."
+		},
+		{
+			"name": "x402 Auto",
+			"description": "Pay-per-request conditional query builder and runner (x402, Beta)."
 		},
 		{
 			"name": "v1",
-			"description": "API v1 endpoints"
+			"description": "API v1 endpoints (legacy)."
 		}
 	],
 	"tryItOutEnabled": true,
@@ -6857,14 +7094,22 @@
 		{
 			"name": "API v2 (Latest)",
 			"tags": [
-				"v2",
-				"v2 Auto [BETA]"
+				"v2 Account",
+				"v2 Aggregations",
+				"v2 Data",
+				"v2 Chat",
+				"v2 System",
+				"v2 Auto"
 			]
 		},
 		{
 			"name": "x402 (Pay-per-request)",
 			"tags": [
-				"x402"
+				"x402 Account",
+				"x402 Aggregations",
+				"x402 Data",
+				"x402 Chat",
+				"x402 Auto"
 			]
 		},
 		{

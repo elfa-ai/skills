@@ -173,7 +173,7 @@ _Other:_
 
 | Endpoint | Method | Description | Auth |
 |---|---|---|---|
-| `/v2/auto/validate-symbol/:symbol` | GET | Check symbol support for conditions | API key |
+| `/v2/auto/validate-tradable-symbol/:symbol` | GET | Check whether a symbol is tradable as a Hyperliquid perp (pre-flight for trade actions) | API key |
 
 **x402 mode (`/x402/v2/auto/*`)** — note: some routes use POST instead of GET:
 
@@ -187,7 +187,7 @@ _Other:_
 | `/x402/v2/auto/queries/:queryId/stream` | GET | Stream notifications via SSE |
 | `/x402/v2/auto/queries/:queryId/sessions` | POST | List LLM sessions (POST, not GET) |
 | `/x402/v2/auto/queries/:queryId/sessions/:sessionId` | POST | Get LLM session details (POST, not GET) |
-| `/x402/v2/auto/validate-symbol/:symbol` | GET | Check symbol support |
+| `/x402/v2/auto/validate-tradable-symbol/:symbol` | GET | Check whether a symbol is tradable as a Hyperliquid perp |
 
 > **Note on x402 Auto scope.** Trade execution actions are not available via x402. Exchange connections, drafts, and executions endpoints are API-key-mode only. x402 Auto covers the core monitoring lifecycle (chat, validate, create, poll, cancel, stream, sessions).
 
@@ -372,6 +372,8 @@ Full Auto docs: [docs.elfa.ai/auto/overview](https://docs.elfa.ai/auto/overview)
 - User wants **multi-condition triggers** ("BTC above 100k AND ETH above 3500")
 - User wants to **compare live metrics** ("alert when price crosses above Bollinger Band")
 - User wants **LLM analysis on trigger** ("when it triggers, run a full analysis")
+- User wants **account-anchored social triggers** ("notify me when @cz_binance posts that Binance Alpha is listing a new token") — use **Signal: X/Twitter Post** (`source: "tweet"`)
+- User wants **event-driven triggers** ("alert me when SEC approves a spot ETH ETF") — use **Signal: Event** (`source: "news"`)
 
 #### Auto access models
 
@@ -549,7 +551,7 @@ existing queries/sessions may become inaccessible.
 | `POST /v2/auto/queries/preview` | Free | Preview without creating |
 | `GET /v2/auto/queries/*` (list, poll, stream, sessions) | Free | |
 | `DELETE /v2/auto/queries/:queryId` (Cancel) | Free | |
-| `GET /v2/auto/validate-symbol/:symbol` | Free | |
+| `GET /v2/auto/validate-tradable-symbol/:symbol` | Free | |
 
 > Reference USD values for Create: baseline `$0.045`, fast call `+$0.045`, expert call `+$0.162`. Use `/queries/validate` to preview exact cost before committing.
 
@@ -662,6 +664,7 @@ in a JSON code block — extract, validate via `/queries/validate`, then submit 
 **Prompting tips for Builder Chat:**
 - Include `title` and `description` (shown in notifications so recipients know what fired hours/days later)
 - Specify symbols, timeframe, trigger behavior (one-time vs recurring), delivery target
+- For Signal triggers, give a **factual** match description (avoid vague phrasing like "bullish vibes")
 - Append `"If anything is unsupported, return the closest supported query and list substitutions"` to handle edge cases gracefully
 - Prefer `expiresIn` of `24h`–`3d` for fresh signals
 - Persist `sessionId` and reuse it for follow-up prompts so the model keeps context across turns
@@ -742,6 +745,35 @@ Build an Auto query:
 - action: webhook to https://your-runner.example/auto/events
 - include fields: eventId, symbol, triggerReason, priority, queryId
 - objective: downstream agent decides next action under policy constraints
+- expires in 24h
+```
+
+_7) Signal — account-anchored X/Twitter Post watcher:_
+
+```
+Build an Auto query:
+- title + description: short summary anchored to the account + intent
+- use Signal category:
+  - condition source: tweet
+  - username: cz_binance (no leading @)
+  - match description: "Binance Alpha is listing a new token"
+  - minConfidence: 80
+- action: notify (or telegram_bot) with a concise message
+- expires in 24h
+If unsupported, return closest supported query and list substitutions.
+```
+
+_8) Signal — event-first catalyst watcher:_
+
+```
+Build an Auto query:
+- title + description: catalyst name and why it matters now
+- use Signal category:
+  - condition source: news
+  - match description: "SEC approves a spot ETH ETF"
+  - minConfidence: 80
+- action: webhook to https://your-runner.example/auto/events
+- include queryId, eventId, and short trigger reason in payload
 - expires in 24h
 ```
 
@@ -832,8 +864,90 @@ actions per query).
 |---|---|---|
 | `athena_condition` | `query`, `period`, `speed?` | LLM-evaluated condition (natural language) |
 
+**Signal source — X/Twitter Post (`tweet`):**
+
+In the Builder Chat catalog this is the `Signal` category, **X/Twitter Post**.
+
+| Method | Required args | Returns | Description |
+|---|---|---|---|
+| `semantic` | `username`, `text`, `minConfidence` | boolean | Matches posts from a specific X/Twitter account when semantic confidence meets threshold |
+
+Rules:
+- `username` must be passed **without** `@` (e.g. `cz_binance`, not `@cz_binance`).
+- `username` must resolve to an active monitored account at create-time, otherwise validation/create fails.
+- `minConfidence` must be a JSON integer between `0` and `100`; use `80` when the user gives no threshold.
+- Default operator/value: `"==", true` — the condition is true when semantic match passes the threshold.
+
+```json
+{
+  "source": "tweet",
+  "method": "semantic",
+  "args": {
+    "username": "cz_binance",
+    "text": "Binance Alpha is listing a new token",
+    "minConfidence": 80
+  },
+  "operator": "==",
+  "value": true
+}
+```
+
+**Signal source — Event (`news`):**
+
+In the Builder Chat catalog this is the `Signal` category, **Event**.
+
+| Method | Required args | Returns | Description |
+|---|---|---|---|
+| `semantic` | `text`, `minConfidence` | boolean | Matches event-style mentions from news-tagged sources when semantic confidence meets threshold |
+
+Rules:
+- `minConfidence` must be a JSON integer between `0` and `100`; use `80` when the user gives no threshold.
+- Default operator/value: `"==", true`.
+- Use `news` for world events not anchored to a specific account; use `tweet` when the trigger is anchored to a specific handle.
+
+```json
+{
+  "source": "news",
+  "method": "semantic",
+  "args": {
+    "text": "SEC approves a spot ETH ETF",
+    "minConfidence": 80
+  },
+  "operator": "==",
+  "value": true
+}
+```
+
+**Signal selection policy** (which source to pick):
+
+- Account-anchored intent (handle in the prompt) → `tweet`.
+- World-event intent (no specific account) → `news`.
+- Prefer `tweet`/`news` over `llm` when the trigger is plausibly expressed as a post or event.
+- Fall back to `llm` (`athena_condition`) only for predicates that are not naturally a post/event match.
+
+**Signal `args.text` authoring rubric** — match quality is dominated by `text` quality. Write a short factual claim, not a monitoring command.
+
+| Weak phrasing (bad) | Actionable phrasing (good) |
+|---|---|
+| `Bearish vibes` | `Opens a short position on oil` |
+| `Something bullish` | `Announces a new stake in TSLA` |
+| `Bullish on a coin` | `Posts that they're bullish on $HYPE and $SOL` |
+| `Market crash` | `Major DeFi protocol suffers a $200M exploit` |
+| `War conflict` | `US imposes new sanctions on Russia` |
+| `Big news` | `SEC approves a spot ETH ETF` |
+
+Additional constraints:
+- Keep `text` atomic — one event/theme per condition.
+- For `tweet`, do not restate account identity in `text` — `username` already scopes that.
+- Split `A or B` intents into multiple Signal conditions joined by `OR`; split `A and B` into multiple conditions joined by `AND`.
+- Prefer separate queries for event-driven Signal intents (`tweet`/`news`) and recurring schedule intents (`cron.every`) for clearer runtime semantics.
+
+**`minConfidence` tuning:** default `80`; raise to `85`–`90` for fewer false positives; lower to `70`–`75` if you need higher recall.
+
 **Scheduling period (cron / llm):** minimum `1h`. Allowed: `1h`, `2h`, `4h`, `8h`,
 `12h`, `24h`, `1d`, `7d`.
+
+**Signal sources are event-driven**, not schedule-driven — they evaluate when relevant mention events arrive, not on a polling interval. They can still be combined with other condition types via `AND`/`OR`.
 
 **Supported operators:** `>`, `<`, `>=`, `<=`, `==`, `!=`, `crosses_above`, `crosses_below`
 
@@ -953,6 +1067,53 @@ actions per query).
   },
   "actions": [{ "stepId": "step_1", "type": "telegram", "params": { "message": "AI narrative shift detected" } }],
   "expiresIn": "2d"
+}
+```
+
+**8) Signal — X/Twitter Post (account-anchored):**
+
+```json
+{
+  "title": "Binance Alpha listing post watcher",
+  "description": "Fire when cz_binance posts that Binance Alpha is listing a new token so the runner can review follow-through.",
+  "conditions": {
+    "AND": [{
+      "source": "tweet",
+      "method": "semantic",
+      "args": {
+        "username": "cz_binance",
+        "text": "Binance Alpha is listing a new token",
+        "minConfidence": 80
+      },
+      "operator": "==",
+      "value": true
+    }]
+  },
+  "actions": [{ "stepId": "step_1", "type": "webhook", "params": { "url": "https://your-runner.example/auto/events" } }],
+  "expiresIn": "24h"
+}
+```
+
+**9) Signal — Event (news-driven catalyst):**
+
+```json
+{
+  "title": "ETH ETF approval event watcher",
+  "description": "Fire when event feeds indicate a spot ETH ETF approval so I can kick off a post-event playbook.",
+  "conditions": {
+    "AND": [{
+      "source": "news",
+      "method": "semantic",
+      "args": {
+        "text": "SEC approves a spot ETH ETF",
+        "minConfidence": 80
+      },
+      "operator": "==",
+      "value": true
+    }]
+  },
+  "actions": [{ "stepId": "step_1", "type": "notify", "params": { "message": "Event trigger fired: spot ETH ETF approval signal" } }],
+  "expiresIn": "24h"
 }
 ```
 
@@ -1253,6 +1414,8 @@ issue, not a capability gap. Iterate on Validate instead of abandoning the query
 | Unsupported `symbol` / source | Asset not indexed or DEX pair unsupported | Skip symbol and report it; proceed with supported subset |
 | Depth / leaf-count exceeded | More than depth 3 or 10 leaves | Split into two queries joined by your runner |
 | `cron` / `llm` period too short | Below 1h minimum | Raise to `1h` or higher |
+| Unmonitored `tweet` username | `tweet.semantic` `args.username` not in monitored active accounts | Replace with a monitored active handle (without `@`) and re-validate |
+| Invalid `minConfidence` (`tweet` / `news`) | Non-integer or outside `0..100` | Use a JSON integer between `0` and `100` (start with `80`) |
 | Dynamic value in action params | Dynamic values only allowed in condition `value` | Move dynamic reference into condition; keep action params literal |
 
 Cross-operator semantics: `crosses_above` = previous `<` threshold AND current `>=` threshold.
