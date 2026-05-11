@@ -173,15 +173,18 @@ Help me build a multi-condition trigger for BTC + ETH breakout confirmation
 | `/v2/auto/chat` | Builder Chat — AI-assisted query building |
 | `/v2/auto/queries/validate` | Validate EQL query and preview cost |
 | `/v2/auto/queries/preview` | Preview a query without creating it |
-| `/v2/auto/queries` | Create, list, poll, cancel Auto queries |
+| `/v2/auto/queries` | Create and list Auto queries |
+| `/v2/auto/queries/:queryId` | Poll query status (GET) |
+| `/v2/auto/queries/:queryId/cancel` | Cancel an `active` query (POST) |
+| `/v2/auto/queries/:queryId` | Delete a terminal query (DELETE — `triggered` / `expired` / `cancelled` / `failed` only) |
 | `/v2/auto/queries/:queryId/stream` | Stream notifications via SSE |
 | `/v2/auto/queries/:queryId/sessions` | List/get LLM analysis sessions |
 | `/v2/auto/queries/drafts` | Upsert, list, preview, convert, delete query drafts |
 | `/v2/auto/executions` | List and get trigger execution records |
 | `/v2/auto/exchanges` | Connect, list, disconnect exchange integrations |
-| `/v2/auto/validate-symbol/:symbol` | Check symbol support for conditions |
+| `/v2/auto/validate-tradable-symbol/:symbol` | Check whether a symbol is tradable as a Hyperliquid perp (pre-flight for `market_order`, `limit_order`, or `llm` trade callbacks) |
 
-Auto endpoints require HMAC signing for trade-action mutations (`market_order`, `limit_order`) and exchange linking in API key mode; notification-only mutations (`notify`, `telegram_bot`, `webhook`) skip HMAC. x402 mode uses `x-elfa-agent-secret` instead. Always-signing remains safe — signed requests are accepted on every route. See [Auto docs](https://docs.elfa.ai/auto/overview).
+Auto endpoints require HMAC signing for trade-action mutations (`market_order`, `limit_order`, or `llm` callback to either) and exchange linking in API key mode; notification-only mutations (`notify`, `telegram_bot`, `webhook`, or `llm` callback to those) skip HMAC. x402 mode uses `x-elfa-agent-secret` instead of HMAC. Always-signing remains safe in API key mode — signed requests are accepted on every route. See [Auto docs](https://docs.elfa.ai/auto/overview).
 
 Full details at [docs.elfa.ai](https://docs.elfa.ai).
 

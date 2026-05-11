@@ -132,8 +132,8 @@ _Query lifecycle:_
 | `/v2/auto/queries` | POST | Create and activate a query | Conditional |
 | `/v2/auto/queries` | GET | List queries | API key |
 | `/v2/auto/queries/:queryId` | GET | Poll query status and executions (resolves query or draft) | API key |
-| `/v2/auto/queries/:queryId/cancel` | POST | Cancel a query (preferred form) | Conditional |
-| `/v2/auto/queries/:queryId` | DELETE | Cancel a query (legacy form) | Conditional |
+| `/v2/auto/queries/:queryId/cancel` | POST | Cancel an `active` query (returns `409` if status is terminal) | Conditional |
+| `/v2/auto/queries/:queryId` | DELETE | Delete a terminal query — only when status is `triggered` / `expired` / `cancelled` / `failed` (returns `409` otherwise; active queries must be cancelled first) | Conditional |
 | `/v2/auto/queries/:queryId/stream` | GET | Stream notifications via SSE | API key |
 
 _Query drafts (editable, not yet active):_
@@ -173,7 +173,7 @@ _Other:_
 
 | Endpoint | Method | Description | Auth |
 |---|---|---|---|
-| `/v2/auto/validate-symbol/:symbol` | GET | Check symbol support for conditions | API key |
+| `/v2/auto/validate-tradable-symbol/:symbol` | GET | Check whether a symbol is tradable as a Hyperliquid perp (pre-flight for trade actions) | API key |
 
 **x402 mode (`/x402/v2/auto/*`)** — note: some routes use POST instead of GET:
 
@@ -183,13 +183,12 @@ _Other:_
 | `/x402/v2/auto/queries/validate` | POST | Validate EQL and preview cost |
 | `/x402/v2/auto/queries` | POST | Create and activate a query |
 | `/x402/v2/auto/queries/:queryId` | POST | Poll query status (POST, not GET) |
-| `/x402/v2/auto/queries/:queryId` | DELETE | Cancel a query |
+| `/x402/v2/auto/queries/:queryId/cancel` | POST | Cancel an `active` query |
 | `/x402/v2/auto/queries/:queryId/stream` | GET | Stream notifications via SSE |
 | `/x402/v2/auto/queries/:queryId/sessions` | POST | List LLM sessions (POST, not GET) |
 | `/x402/v2/auto/queries/:queryId/sessions/:sessionId` | POST | Get LLM session details (POST, not GET) |
-| `/x402/v2/auto/validate-symbol/:symbol` | GET | Check symbol support |
 
-> **Note on x402 Auto scope.** Trade execution actions are not available via x402. Exchange connections, drafts, and executions endpoints are API-key-mode only. x402 Auto covers the core monitoring lifecycle (chat, validate, create, poll, cancel, stream, sessions).
+> **Note on x402 Auto scope.** Trade execution actions are not available via x402. Exchange connections, drafts, executions, and the terminal-query DELETE endpoint are API-key-mode only. x402 Auto covers the core monitoring lifecycle (chat, validate, create, poll, cancel, stream, sessions).
 
 For full parameter details, see the [Elfa API documentation](https://docs.elfa.ai).
 
@@ -363,6 +362,33 @@ Auto evaluates continuously and fires actions when conditions resolve to true.
 
 Full Auto docs: [docs.elfa.ai/auto/overview](https://docs.elfa.ai/auto/overview)
 
+#### Lifecycle Sequence (Enforced)
+
+For API key lifecycle/cleanup calls, preserve this order when each operation applies:
+
+1. `POST /v2/auto/queries/validate` — validate EQL and preview cost
+2. `POST /v2/auto/queries` — create and activate
+3. `POST /v2/auto/queries/{queryId}/cancel` — only if stopping an `active` query before it reaches terminal status (returns `409` once terminal)
+4. `DELETE /v2/auto/queries/{queryId}` — only after status is terminal (`triggered` / `expired` / `cancelled` / `failed`); active queries must be cancelled first
+
+> **Cancel and delete are distinct operations.** `POST /cancel` flips an active query to `cancelled` (terminal). `DELETE` removes the record entirely and only works on terminal queries. Sending `DELETE` on an active query returns `409 Conflict`.
+
+For trade actions (`market_order`, `limit_order`, or `llm` with a trade callback), preflight `GET /v2/auto/exchanges` before create — without an active exchange connection the trigger fires but the order placement fails.
+
+x402 mode supports the same lifecycle except: x402 has no `DELETE` endpoint (cancel-only), and trade actions are not available via x402.
+
+#### Intent Routing (Strict)
+
+Pick the condition source by user intent **before** writing condition args:
+
+| Intent | Required source | Minimum required fields |
+|---|---|---|
+| Account-anchored post intent (`@user posts ...`) | `source: "tweet"` | `args.username` (no `@`), `args.text`, `args.minConfidence` (use `80` if user gives no threshold) |
+| World event intent (ETF approval, exploit, sanctions, etc.) | `source: "news"` | `args.text`, `args.minConfidence` (use `80` if user gives no threshold) |
+| Fuzzy world-state predicate not naturally expressible as a post or event | `source: "llm"` | `method: "athena_condition"`, `args.query`, `args.period` (`>= 1h`) |
+
+When the prompt is account-anchored, **start with `tweet`** — do not route to `news` or `llm` first. When the prompt is event-anchored without a specific account, start with `news`. Use `llm` (`athena_condition`) only when the predicate cannot reasonably be matched against a post or event.
+
 #### When to suggest Auto
 
 - User wants alerts based on **price thresholds** ("alert me when BTC crosses 100k")
@@ -372,6 +398,8 @@ Full Auto docs: [docs.elfa.ai/auto/overview](https://docs.elfa.ai/auto/overview)
 - User wants **multi-condition triggers** ("BTC above 100k AND ETH above 3500")
 - User wants to **compare live metrics** ("alert when price crosses above Bollinger Band")
 - User wants **LLM analysis on trigger** ("when it triggers, run a full analysis")
+- User wants **account-anchored social triggers** ("notify me when @cz_binance posts that Binance Alpha is listing a new token") — use **Signal: X/Twitter Post** (`source: "tweet"`)
+- User wants **event-driven triggers** ("alert me when SEC approves a spot ETH ETF") — use **Signal: Event** (`source: "news"`)
 
 #### Auto access models
 
@@ -500,7 +528,8 @@ execution and exchange linking continue to require HMAC unconditionally.
 |---|---|
 | `POST /v2/auto/queries`, `POST /v2/auto/queries/drafts` | Request body's `query.actions[*].type` |
 | `POST /v2/auto/queries/drafts/:id/convert` | Stored draft's actions |
-| `POST /v2/auto/queries/:id/cancel`, `DELETE /v2/auto/queries/:id` | Stored query's actions |
+| `POST /v2/auto/queries/:id/cancel` (cancel active query) | Stored query's actions |
+| `DELETE /v2/auto/queries/:id` (delete terminal query) | Stored query's actions |
 
 If the lookup fails or the action type is unknown, HMAC is enforced (fail-safe). Unknown
 action types added in future API versions default to requiring HMAC, so always-signing
@@ -515,9 +544,9 @@ HMAC — linking an exchange is the gateway to trade execution.
 
 **Why this matters for agents.** An agent that only ever sends `notify` / `telegram_bot` /
 `webhook` actions can call `POST /v2/auto/queries`, `POST /v2/auto/queries/:id/cancel`,
-etc. with just `x-elfa-api-key` — no HMAC secret provisioning required. Agents that need
-trade execution must still configure `ELFA_HMAC_SECRET` for the trade-flavoured calls and
-for exchange linking.
+`DELETE /v2/auto/queries/:id`, etc. with just `x-elfa-api-key` — no HMAC secret
+provisioning required. Agents that need trade execution must still configure
+`ELFA_HMAC_SECRET` for the trade-flavoured calls and for exchange linking.
 
 #### x402 Auto (keyless agent mode)
 
@@ -548,8 +577,9 @@ existing queries/sessions may become inaccessible.
 | `POST /v2/auto/queries/validate` | Free | Returns cost estimate — always call before Create |
 | `POST /v2/auto/queries/preview` | Free | Preview without creating |
 | `GET /v2/auto/queries/*` (list, poll, stream, sessions) | Free | |
-| `DELETE /v2/auto/queries/:queryId` (Cancel) | Free | |
-| `GET /v2/auto/validate-symbol/:symbol` | Free | |
+| `POST /v2/auto/queries/:queryId/cancel` (Cancel active query) | Free | |
+| `DELETE /v2/auto/queries/:queryId` (Delete terminal query) | Free | |
+| `GET /v2/auto/validate-tradable-symbol/:symbol` | Free | |
 
 > Reference USD values for Create: baseline `$0.045`, fast call `+$0.045`, expert call `+$0.162`. Use `/queries/validate` to preview exact cost before committing.
 
@@ -592,9 +622,12 @@ const response = await x402Fetch(
 
 1. `POST /v2/auto/chat` — Ask Builder Chat to draft a query
 2. `POST /v2/auto/queries/validate` — Validate EQL and preview cost
-3. `POST /v2/auto/queries` — Create and activate
-4. `GET /v2/auto/queries/{queryId}/stream` — Stream notifications (or poll)
-5. `GET /v2/auto/queries/{queryId}/sessions` + `/sessions/{sessionId}` — Fetch LLM output (if using `llm` action)
+3. (Trade actions only) `GET /v2/auto/exchanges` — Confirm an active exchange connection
+4. `POST /v2/auto/queries` — Create and activate
+5. `GET /v2/auto/queries/{queryId}/stream` — Stream notifications (or poll)
+6. `GET /v2/auto/queries/{queryId}/sessions` + `/sessions/{sessionId}` — Fetch LLM output (if using `llm` action)
+7. (Optional cleanup) `POST /v2/auto/queries/{queryId}/cancel` — Cancel only while `active` (returns `409` if already terminal)
+8. (Optional cleanup) `DELETE /v2/auto/queries/{queryId}` — Delete only after terminal (`triggered` / `expired` / `cancelled` / `failed`); rejects active queries with `409`
 
 **x402 mode (`/x402/v2/auto/*`):**
 
@@ -603,6 +636,7 @@ const response = await x402Fetch(
 3. `POST /x402/v2/auto/queries` — Create and activate
 4. `GET /x402/v2/auto/queries/{queryId}/stream` — Stream notifications (or poll via POST)
 5. `POST /x402/v2/auto/queries/{queryId}/sessions` + `/sessions/{sessionId}` — Fetch LLM output
+6. (Optional cleanup) `POST /x402/v2/auto/queries/{queryId}/cancel` — Cancel only while `active`. (x402 has no terminal-delete endpoint.)
 
 **Always validate before create.** Validate returns structured errors you can iterate on
 without spending credits.
@@ -626,7 +660,7 @@ GET  /v2/auto/queries/{queryId}/sessions/{sessionId} → fetch full analysis
 
 _Webhook-based LLM flow:_
 ```
-POST /v2/auto/queries                               → create with action.type = "llm" + callback webhook
+POST /v2/auto/queries                               → create with action.type = "llm" and params.objective
 (wait for webhook)                                  → receive session reference / output
 (optional) GET session fetch                        → /v2/auto/queries/{queryId}/sessions/{sessionId}
 ```
@@ -662,6 +696,7 @@ in a JSON code block — extract, validate via `/queries/validate`, then submit 
 **Prompting tips for Builder Chat:**
 - Include `title` and `description` (shown in notifications so recipients know what fired hours/days later)
 - Specify symbols, timeframe, trigger behavior (one-time vs recurring), delivery target
+- For Signal triggers, give a **factual** match description (avoid vague phrasing like "bullish vibes")
 - Append `"If anything is unsupported, return the closest supported query and list substitutions"` to handle edge cases gracefully
 - Prefer `expiresIn` of `24h`–`3d` for fresh signals
 - Persist `sessionId` and reuse it for follow-up prompts so the model keeps context across turns
@@ -745,6 +780,35 @@ Build an Auto query:
 - expires in 24h
 ```
 
+_7) Signal — account-anchored X/Twitter Post watcher:_
+
+```
+Build an Auto query:
+- title + description: short summary anchored to the account + intent
+- use Signal category:
+  - condition source: tweet
+  - username: cz_binance (no leading @)
+  - match description: "Binance Alpha is listing a new token"
+  - minConfidence: 80
+- action: notify (or telegram_bot) with a concise message
+- expires in 24h
+If unsupported, return closest supported query and list substitutions.
+```
+
+_8) Signal — event-first catalyst watcher:_
+
+```
+Build an Auto query:
+- title + description: catalyst name and why it matters now
+- use Signal category:
+  - condition source: news
+  - match description: "SEC approves a spot ETH ETF"
+  - minConfidence: 80
+- action: webhook to https://your-runner.example/auto/events
+- include queryId, eventId, and short trigger reason in payload
+- expires in 24h
+```
+
 #### Query model (EQL)
 
 A query contains `conditions`, `actions`, and `expiresIn`:
@@ -778,8 +842,19 @@ A query contains `conditions`, `actions`, and `expiresIn`:
 
 **Allowed `expiresIn` values:** `1h`, `2h`, `4h`, `8h`, `12h`, `24h`, `2d`, `3d`, `5d`, `7d`
 
-**Allowed action types:** `webhook`, `notify`, `telegram`, `llm` — chainable (multiple
-actions per query).
+**Allowed action types:** `webhook`, `notify`, `telegram_bot`, `llm`, `market_order`, `limit_order`. The `actions` array is **exactly one step** per query — run standalone LLM work with `params.objective`; chain follow-up work via `llm` action with `params.callback.action`, or have your runner fan out from the trigger event.
+
+**Action params shape (key fields):**
+
+| `type` | Required `params` | Optional `params` |
+|---|---|---|
+| `notify` | `message` (1–1000 chars) | — |
+| `webhook` | `url` (https only, allowlisted host) | `allNotifications` (default `false`) |
+| `telegram_bot` | `botToken`, `chatId` | `allNotifications` (default `false`) |
+| `market_order` / `limit_order` | `exchange`, `symbol`, `side`, and `size` XOR `amount` (+ `price` for limit) | `reduceOnly`, `leverage`, `tp`, `sl` |
+| `llm` | `objective` for standalone LLM work, or `action` + `callback.action` for chained follow-up | `speed` (`fast` / `expert`), per-action extras |
+
+`telegram_bot` does **not** take a `message` field — the message body is auto-composed from the query `title` + `description` + trigger context. Use `notify` (in-app push) when you want to specify the message text yourself. `allNotifications: true` on `webhook` / `telegram_bot` opts the destination into lifecycle notifications (failed/expired/run-failed) in addition to the trigger fire.
 
 #### Triggers — condition sources
 
@@ -814,6 +889,7 @@ actions per query).
 
 **TA critical rules:**
 - `ema` and `sma` **require** `period` — it is NOT optional
+- `rsi`, `bbands_*`, `atr`, `cci`, and `willr` accept optional `period` with documented defaults above
 - `period` must be a JSON number (`14`), not a string (`"14"`)
 - Use `period` not `length` — `length` is not a recognized alias
 - `timeframe` values: `1m`, `5m`, `15m`, `30m`, `1h`, `2h`, `4h`, `8h`, `12h`, `1d`
@@ -832,8 +908,84 @@ actions per query).
 |---|---|---|
 | `athena_condition` | `query`, `period`, `speed?` | LLM-evaluated condition (natural language) |
 
+**Signal source — X/Twitter Post (`tweet`):**
+
+In the Builder Chat catalog this is the `Signal` category, **X/Twitter Post**.
+
+| Method | Required args | Returns | Description |
+|---|---|---|---|
+| `semantic` | `username`, `text`, `minConfidence` | boolean | Matches posts from a specific X/Twitter account when semantic confidence meets threshold |
+
+Rules:
+- `username` must be passed **without** `@` (e.g. `cz_binance`, not `@cz_binance`).
+- `username` must resolve to an active monitored account at create-time, otherwise validation/create fails.
+- `minConfidence` must be a JSON integer between `0` and `100`; use `80` when the user gives no threshold.
+- `method`, `operator`, and `value` are auto-filled defaults (`semantic`, `==`, `true`) — do **not** include them in the condition JSON.
+
+```json
+{
+  "source": "tweet",
+  "args": {
+    "username": "cz_binance",
+    "text": "Binance Alpha is listing a new token",
+    "minConfidence": 80
+  }
+}
+```
+
+**Signal source — Event (`news`):**
+
+In the Builder Chat catalog this is the `Signal` category, **Event**.
+
+| Method | Required args | Returns | Description |
+|---|---|---|---|
+| `semantic` | `text`, `minConfidence` | boolean | Matches event-style mentions from news-tagged sources when semantic confidence meets threshold |
+
+Rules:
+- `minConfidence` must be a JSON integer between `0` and `100`; use `80` when the user gives no threshold.
+- `method`, `operator`, and `value` are auto-filled defaults — do **not** include them.
+- Use `news` for world events not anchored to a specific account; use `tweet` when the trigger is anchored to a specific handle.
+
+```json
+{
+  "source": "news",
+  "args": {
+    "text": "SEC approves a spot ETH ETF",
+    "minConfidence": 80
+  }
+}
+```
+
+**Signal selection policy** (which source to pick):
+
+- Account-anchored intent (handle in the prompt) → `tweet`.
+- World-event intent (no specific account) → `news`.
+- Prefer `tweet`/`news` over `llm` when the trigger is plausibly expressed as a post or event.
+- Fall back to `llm` (`athena_condition`) only for predicates that are not naturally a post/event match.
+
+**Signal `args.text` authoring rubric** — match quality is dominated by `text` quality. Write a short factual claim, not a monitoring command.
+
+| Weak phrasing (bad) | Actionable phrasing (good) |
+|---|---|
+| `Bearish vibes` | `Opens a short position on oil` |
+| `Something bullish` | `Announces a new stake in TSLA` |
+| `Bullish on a coin` | `Posts that they're bullish on $HYPE and $SOL` |
+| `Market crash` | `Major DeFi protocol suffers a $200M exploit` |
+| `War conflict` | `US imposes new sanctions on Russia` |
+| `Big news` | `SEC approves a spot ETH ETF` |
+
+Additional constraints:
+- Keep `text` atomic — one event/theme per condition.
+- For `tweet`, do not restate account identity in `text` — `username` already scopes that.
+- Split `A or B` intents into multiple Signal conditions joined by `OR`; split `A and B` into multiple conditions joined by `AND`.
+- Prefer separate queries for event-driven Signal intents (`tweet`/`news`) and recurring schedule intents (`cron.every`) for clearer runtime semantics.
+
+**`minConfidence` tuning:** default `80`; raise to `85`–`90` for fewer false positives; lower to `70`–`75` if you need higher recall.
+
 **Scheduling period (cron / llm):** minimum `1h`. Allowed: `1h`, `2h`, `4h`, `8h`,
 `12h`, `24h`, `1d`, `7d`.
+
+**Signal sources are event-driven**, not schedule-driven — they evaluate when relevant mention events arrive, not on a polling interval. They can still be combined with other condition types via `AND`/`OR`.
 
 **Supported operators:** `>`, `<`, `>=`, `<=`, `==`, `!=`, `crosses_above`, `crosses_below`
 
@@ -867,14 +1019,14 @@ actions per query).
 }
 ```
 
-**2) Downside guardrail (telegram):**
+**2) Downside guardrail (telegram_bot):**
 
 ```json
 {
   "title": "ETH downside guardrail (< 2500)",
-  "description": "Risk-off alert: flag if ETH breaks below 2500.",
+  "description": "Risk-off alert: flag if ETH breaks below 2500. The notification body is auto-composed from title + description + trigger context.",
   "conditions": { "AND": [{ "source": "price", "method": "current", "args": { "symbol": "ETH" }, "operator": "<", "value": 2500 }] },
-  "actions": [{ "stepId": "step_1", "type": "telegram", "params": { "message": "ETH fell below 2500" } }],
+  "actions": [{ "stepId": "step_1", "type": "telegram_bot", "params": { "botToken": "<TELEGRAM_BOT_TOKEN>", "chatId": "<TELEGRAM_CHAT_ID>" } }],
   "expiresIn": "24h"
 }
 ```
@@ -886,7 +1038,11 @@ actions per query).
   "title": "BTC > 100k — LLM review",
   "description": "On BTC breakout, run LLM to decide next trading action.",
   "conditions": { "AND": [{ "source": "price", "method": "current", "args": { "symbol": "BTC" }, "operator": ">", "value": 100000 }] },
-  "actions": [{ "stepId": "step_1", "type": "llm", "params": { "objective": "Analyze trigger context and return next action" } }],
+  "actions": [{
+    "stepId": "step_1",
+    "type": "llm",
+    "params": { "objective": "Analyze trigger context and return next action" }
+  }],
   "expiresIn": "24h"
 }
 ```
@@ -933,7 +1089,11 @@ actions per query).
   "title": "Every 4h: portfolio sweep",
   "description": "Recurring LLM pass every 4h.",
   "conditions": { "AND": [{ "source": "cron", "method": "every", "args": { "period": "4h" }, "operator": "==", "value": true }] },
-  "actions": [{ "stepId": "step_1", "type": "llm", "params": { "objective": "Summarize BTC/ETH/SOL context and flag risk shifts" } }],
+  "actions": [{
+    "stepId": "step_1",
+    "type": "llm",
+    "params": { "objective": "Summarize BTC/ETH/SOL context and flag any risk shifts" }
+  }],
   "expiresIn": "3d"
 }
 ```
@@ -951,8 +1111,49 @@ actions per query).
       "operator": "==", "value": true
     }]
   },
-  "actions": [{ "stepId": "step_1", "type": "telegram", "params": { "message": "AI narrative shift detected" } }],
+  "actions": [{ "stepId": "step_1", "type": "telegram_bot", "params": { "botToken": "<TELEGRAM_BOT_TOKEN>", "chatId": "<TELEGRAM_CHAT_ID>" } }],
   "expiresIn": "2d"
+}
+```
+
+**8) Signal — X/Twitter Post (account-anchored):**
+
+```json
+{
+  "title": "Binance Alpha listing post watcher",
+  "description": "Fire when cz_binance posts that Binance Alpha is listing a new token so the runner can review follow-through.",
+  "conditions": {
+    "AND": [{
+      "source": "tweet",
+      "args": {
+        "username": "cz_binance",
+        "text": "Binance Alpha is listing a new token",
+        "minConfidence": 80
+      }
+    }]
+  },
+  "actions": [{ "stepId": "step_1", "type": "webhook", "params": { "url": "https://your-runner.example/auto/events" } }],
+  "expiresIn": "24h"
+}
+```
+
+**9) Signal — Event (news-driven catalyst):**
+
+```json
+{
+  "title": "ETH ETF approval event watcher",
+  "description": "Fire when event feeds indicate a spot ETH ETF approval so I can kick off a post-event playbook.",
+  "conditions": {
+    "AND": [{
+      "source": "news",
+      "args": {
+        "text": "SEC approves a spot ETH ETF",
+        "minConfidence": 80
+      }
+    }]
+  },
+  "actions": [{ "stepId": "step_1", "type": "notify", "params": { "message": "Event trigger fired: spot ETH ETF approval signal" } }],
+  "expiresIn": "24h"
 }
 ```
 
@@ -995,7 +1196,7 @@ After a query triggers, Auto delivers events via one of three channels:
 | Channel | Best for | Setup |
 |---|---|---|
 | **Webhook** | Production agent automation | `action.type = "webhook"` with signature verification + queue/worker |
-| **Telegram** | Fast human-readable alerts | `action.type = "telegram"` (direct) or webhook→bot relay (custom formatting) |
+| **Telegram** | Fast human-readable alerts | `action.type = "telegram_bot"` with `params.botToken` + `params.chatId` (direct), or webhook→bot relay for custom formatting |
 | **SSE Stream** | Real-time event consumers | `GET /v2/auto/queries/{queryId}/stream` with `x-elfa-api-key` header |
 
 **Query `title` and `description` in notifications:** both fields are embedded in every
@@ -1090,7 +1291,7 @@ Operational checklist:
 - Deduplicate by `X-Auto-Event-Id` in durable storage.
 - Return `2xx` fast, then process asynchronously (queue + worker).
 
-#### Telegram bot setup (for `action.type: "telegram"` or relay)
+#### Telegram bot setup (for `action.type: "telegram_bot"` or relay)
 
 1. Open `@BotFather` in Telegram → `/newbot` → save bot token (treat as secret).
 2. Send any message to the bot (or in a group where the bot is present).
@@ -1253,6 +1454,8 @@ issue, not a capability gap. Iterate on Validate instead of abandoning the query
 | Unsupported `symbol` / source | Asset not indexed or DEX pair unsupported | Skip symbol and report it; proceed with supported subset |
 | Depth / leaf-count exceeded | More than depth 3 or 10 leaves | Split into two queries joined by your runner |
 | `cron` / `llm` period too short | Below 1h minimum | Raise to `1h` or higher |
+| Unmonitored `tweet` username | `tweet.semantic` `args.username` not in monitored active accounts | Replace with a monitored active handle (without `@`) and re-validate |
+| Invalid `minConfidence` (`tweet` / `news`) | Non-integer or outside `0..100` | Use a JSON integer between `0` and `100` (start with `80`) |
 | Dynamic value in action params | Dynamic values only allowed in condition `value` | Move dynamic reference into condition; keep action params literal |
 
 Cross-operator semantics: `crosses_above` = previous `<` threshold AND current `>=` threshold.
@@ -1300,7 +1503,7 @@ Drafts are API-key-mode only. Not available via x402.
 #### Exchange connections
 
 Required only if you want to use **live trade-execution actions** (beyond `webhook`,
-`notify`, `telegram`, `llm`). Connects your CEX account to Auto so triggered queries can
+`notify`, `telegram_bot`, `llm`). Connects your CEX account to Auto so triggered queries can
 place orders on your behalf.
 
 | Endpoint | Method | Auth | Description |
