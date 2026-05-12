@@ -1,6 +1,6 @@
 # Elfa AI Skills
 
-Real-time crypto social intelligence and automated condition engine for AI coding agents. Track trending tokens, surface narratives, search mentions, run market analysis, and build automated trigger-based workflows — all from your agent's chat.
+Real-time crypto social intelligence and automated condition-engine skills for AI agents. Track trending tokens, surface narratives, search mentions, run market analysis, build automated trigger-based workflows, and wire Elfa Auto signals into GRVT execution.
 
 Works with **Claude Code**, **OpenCode**, **Cursor**, **GitHub Copilot**, **Codex**, and any tool that supports the [Agent Skills](https://agentskills.io) standard.
 
@@ -98,6 +98,18 @@ For a bundled package with API docs and scripts included, run `./skills/elfa-ai/
 | Skill | Description |
 |---|---|
 | [elfa-ai](skills/elfa-ai) | Crypto social intelligence + Auto condition engine — trending tokens, mentions, narratives, AI market analysis, and automated trigger workflows |
+| [elfa-grvt-bot](skills/elfa-grvt-bot) | Self-hosted Elfa Auto to GRVT perpetual futures bot with FastAPI receiver, EIP-712 signing, SQLite registry, Telegram alerts, and OTOCO TP/SL execution |
+
+## Spec validation
+
+Every skill in this repo follows the [Agent Skills](https://agentskills.io/specification.md) directory format: `SKILL.md` at the skill root, optional `scripts/`, `references/`, and `assets/` resources, and spec-compatible frontmatter.
+
+Validate a skill before publishing changes:
+
+```bash
+uvx --from skills-ref agentskills validate ./skills/elfa-ai
+uvx --from skills-ref agentskills validate ./skills/elfa-grvt-bot
+```
 
 ## Get an API key
 
@@ -150,6 +162,12 @@ Create an Auto query that triggers when ETH RSI drops below 30 on the 1h chart
 ```
 Help me build a multi-condition trigger for BTC + ETH breakout confirmation
 ```
+
+```
+Set up the Elfa GRVT bot and create a SOL RSI dip-buy strategy with TP and SL
+```
+
+`elfa-grvt-bot` is live-trading infrastructure. It is prod-only for GRVT and asks for explicit confirmation before activating any strategy.
 
 ## API endpoints
 
