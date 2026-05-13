@@ -6,7 +6,7 @@ Common errors and what they mean, organized by where they surface.
 
 ### `elfa create_query failed: 401 Unauthorized`
 
-`ELFA_API_KEY` is wrong, expired, or missing. Re-copy from the Elfa developer portal (no leading/trailing whitespace). Note that historical "Invalid HMAC signature" errors no longer apply: as of 2026-05-08, Elfa accepts API-key auth alone.
+`ELFA_API_KEY` is wrong, expired, or missing. Re-copy from the Elfa developer portal (no leading/trailing whitespace). HMAC is not required for this bot because it only creates notify-style queries; if you see an HMAC error you have likely modified the authoring flow to emit a trade-flavoured action, which violates the project's notify-only rule.
 
 ### `elfa cancel_query failed: 409 Query must be cancelled before deletion`
 
@@ -26,19 +26,58 @@ The state-form operator (`<`, `>`) fires whenever the condition is true. If the 
 
 For "X dips below threshold" semantics, use `crosses_below`. It only fires on transition.
 
-## On webhook delivery (in receiver logs)
+## Receiver process died / not running
 
-### `400 missing X-Auto-Event-Id`
+Check whether the receiver is up:
 
-Elfa Auto did not include the event-id header. Should not happen with Elfa's current delivery. If it does, check that you are not behind a proxy that strips custom headers.
+```bash
+pgrep -f elfa_grvt_bot
+```
 
-### Webhook signature errors
+If nothing is returned, the process is not running. Restart it:
 
-The receiver does not verify webhook signatures (Elfa Auto delivers unsigned), so signature/timestamp 401s do not occur. If Elfa ever re-enables signed delivery, a verifier would need to be reimplemented. See `references/elfa-webhooks.md`.
+```bash
+source .venv/bin/activate
+python -m elfa_grvt_bot
+```
 
-### `422 Unprocessable Entity`
+On restart the supervisor calls `GET /v2/auto/queries/:id` (poll-query) for each registered active strategy to reconcile status. If a strategy already triggered while the receiver was offline, the bot does NOT replay it as a fire (SSE `eventId` and poll-query `executions[i].id` are different identifier namespaces per the docs -- cross-channel dedupe is unsafe). Instead it emits a `manual_intervention_required` alert so you review the GRVT side manually. To minimize this window, run the receiver under systemd or a PaaS auto-restarter.
 
-FastAPI rejected the request because a header type didn't match. Check the receiver's `auto_events` declaration vs what Elfa sends; if Elfa changes header names, update the receiver.
+## On SSE stream connection (in receiver logs)
+
+### `401 Unauthorized` on stream open
+
+`ELFA_API_KEY` is wrong or expired. The `stream_notifications` call raises a `RuntimeError` with the status code. Rotate the key in `.env` and restart.
+
+### `404 Not Found` on stream open
+
+The query no longer exists on Elfa's side (was hard-deleted). The supervisor will observe a non-`active` status on the next REST check and stop the per-strategy task automatically. No action required unless the strategy should be replaced.
+
+### Stream closes without a trigger event
+
+Normal behavior. A query stream emits one or more `query.triggered` events (canonical per `docs.elfa.ai/auto/notifications`) while the condition holds, then closes. If the condition hasn't fired yet, the stream may stay open for a long time and then close on the server's schedule. After a no-event close, `_strategy_loop` sleeps briefly (default 5s) before re-opening, so a server that closes idle streams aggressively will not trigger a reconnect storm.
+
+### Stream disconnects with a network error
+
+Expected on flaky networks. The per-strategy `_strategy_loop` catches `httpx.HTTPError`, `ConnectionError`, and `ElfaStreamError`, logs a warning, and retries with exponential backoff (initial 2s, max 60s). Fires that landed during the gap are NOT auto-recovered (SSE `eventId` and poll `executions[i].id` are different identifier namespaces per the docs); if poll-query subsequently reports terminal status with executions, the bot emits `manual_intervention_required` so the user reviews GRVT manually.
+
+### Nothing in the logs after "supervisor started"
+
+The supervisor found no active strategies to spawn tasks for. Check that at least one strategy is registered and active:
+
+```bash
+python src/registry_cli.py list --status active
+```
+
+If the output is empty, no strategies have been registered yet, or all were previously cancelled/fired.
+
+## Fires that landed while the receiver was offline
+
+The bot does NOT auto-replay offline fires. SSE notifications carry an `eventId` (`evt_xxx`); poll-query `executions[i].id` (`exec_xxx`) is a different identifier namespace per the documented schemas (`auto/notifications` vs `api/rest/auto-poll-query-v-2`). Replaying poll-query executions through the order path would risk double-placing trades when both channels later catch up.
+
+Instead: on supervisor startup, poll-query reconciles status. If the remote query is in a terminal state AND executions are present, the supervisor emits a `manual_intervention_required` alert listing the strategy. Review the GRVT side and decide whether to enter manually.
+
+To keep the offline window minimal, run the receiver under systemd / a PaaS auto-restarter.
 
 ## In Telegram alerts
 
@@ -52,10 +91,9 @@ Two main paths produce this alert:
 
 ### `unknown_strategy`
 
-Webhook arrived with a `queryId` that has no matching row in the registry. Causes:
+A fire was received for a `queryId` that has no matching row in the registry. Causes:
 - Auto query was registered but the local registry write failed
 - Local DB was reset / migrated and lost the row
-- Webhook delivered to the wrong receiver (URL mix-up)
 
 Look up the `queryId` on Elfa's side via `GET /v2/auto/queries/:id`. If the strategy is something you want to honor, recreate the registry row manually with `registry_cli.py add`.
 
@@ -80,27 +118,6 @@ Order rejected by GRVT for lack of margin. Either fund the account or reduce str
 ### `grvt_other`
 
 Catch-all GRVT error. Read the message. If it is a known pattern (geo-block, rate-limit, instrument suspended), document and add specific handling.
-
-## At the cloudflared tunnel layer
-
-### Tunnel URL responds locally but Elfa webhook never arrives
-
-cloudflared's quick tunnels (the `--url` form) are ephemeral. If cloudflared restarts, the URL changes but existing strategies on Elfa still point at the old URL. The webhook will hit a dead URL.
-
-Solutions:
-- Always re-create strategies after a tunnel restart with the new URL.
-- Move to a named cloudflared tunnel (`cloudflared tunnel create`).
-- Move to a PaaS deploy with a stable HTTPS URL.
-
-### `Could not resolve host: <subdomain>.trycloudflare.com`
-
-Local DNS hasn't propagated the new subdomain yet. This does not affect Elfa (their resolver picks up new domains quickly). Test the tunnel from another network, or wait a minute.
-
-### `cloudflared: command not found`
-
-Install:
-- macOS: `brew install cloudflared`
-- Linux: download from `https://github.com/cloudflare/cloudflared/releases`
 
 ## At the GRVT order placement layer
 
@@ -131,12 +148,9 @@ api_key = os.environ['ELFA_API_KEY']
 sqlite3 registry.db "UPDATE strategies SET status='cancelled' WHERE status='active';"
 
 # 3. Stop the receiver
-pkill -9 -f "elfa_grvt_bot"
+pkill -f "elfa_grvt_bot"
 
-# 4. Stop the tunnel
-pkill -9 cloudflared
-
-# 5. Manually close any open GRVT positions via the UI
+# 4. Manually close any open GRVT positions via the UI
 ```
 
 This is a panic stop, not a graceful shutdown. Use only when something is wrong and you need to halt all firing immediately.

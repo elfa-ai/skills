@@ -10,7 +10,6 @@ def _full_env(monkeypatch):
         "GRVT_TRADING_ACCOUNT_ID": "ta_1",
         "TELEGRAM_BOT_TOKEN": "bot_test",
         "TELEGRAM_CHAT_ID": "12345",
-        "RECEIVER_PUBLIC_URL": "https://example.test",
         "REGISTRY_DB_PATH": "/tmp/registry-test.db",
     }
     for k, v in env.items():
@@ -24,13 +23,6 @@ def test_defaults_grvt_env_to_prod_when_unset(monkeypatch):
     assert cfg.grvt_env == "prod"
 
 
-def test_explicit_grvt_env_testnet(monkeypatch):
-    _full_env(monkeypatch)
-    monkeypatch.setenv("GRVT_ENV", "testnet")
-    cfg = Config.load()
-    assert cfg.grvt_env == "testnet"
-
-
 def test_missing_required_var_raises(monkeypatch):
     _full_env(monkeypatch)
     monkeypatch.delenv("ELFA_API_KEY")
@@ -38,8 +30,27 @@ def test_missing_required_var_raises(monkeypatch):
         Config.load()
 
 
-def test_invalid_grvt_env_raises(monkeypatch):
+def test_grvt_env_non_prod_raises(monkeypatch):
+    """Prod-only by design. Loading with anything else aborts boot."""
     _full_env(monkeypatch)
-    monkeypatch.setenv("GRVT_ENV", "mainnet")  # not a valid value
-    with pytest.raises(ValueError, match="GRVT_ENV"):
-        Config.load()
+    for env in ("testnet", "staging", "dev", "mainnet"):
+        monkeypatch.setenv("GRVT_ENV", env)
+        with pytest.raises(ValueError, match="GRVT_ENV"):
+            Config.load()
+
+
+def test_telegram_vars_optional_when_unset(monkeypatch):
+    _full_env(monkeypatch)
+    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+    monkeypatch.delenv("TELEGRAM_CHAT_ID", raising=False)
+    cfg = Config.load()
+    assert cfg.telegram_bot_token == ""
+    assert cfg.telegram_chat_id == ""
+
+
+def test_telegram_vars_partial_still_loads(monkeypatch):
+    _full_env(monkeypatch)
+    monkeypatch.delenv("TELEGRAM_CHAT_ID", raising=False)
+    cfg = Config.load()
+    assert cfg.telegram_bot_token == "bot_test"
+    assert cfg.telegram_chat_id == ""
