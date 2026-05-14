@@ -1,260 +1,159 @@
 ---
 name: elfa-grvt-bot
-description: Set up a self-hosted bot that bridges Elfa AUTO conditions (RSI, MACD, price, LLM athena_condition, any EQL) to GRVT perpetual futures execution with atomic OTOCO take-profit and stop-loss. Use whenever the user wants to install or deploy an Elfa-to-GRVT trading bot, place trades from Elfa AUTO triggers, set up automated entry plus TP/SL on GRVT perps, author strategies driven by RSI/MACD/stochastic/price/LLM signals, build a receiver that turns Elfa fires into signed GRVT orders, or hook X social signals to live trades. Ships the full project source (SSE consumer, EIP-712 signer, SQLite registry, Telegram alerts, CLI, tests) plus references encoding every production gotcha. User needs API credentials for Elfa and GRVT; Telegram is optional. Trigger even when only one side is mentioned (e.g. "Elfa AUTO trade execution" or "GRVT TP/SL via API") because every piece flows through this same project.
+description: Specification for a self-hosted bot that bridges Elfa AUTO conditions (RSI, MACD, price, LLM athena_condition, cron, any EQL) to GRVT perpetual futures execution with atomic OTOCO take-profit and stop-loss. Reading this skill produces enough information to implement the bot from scratch in any language; no source is bundled. Trigger when the user wants to install, build, deploy, or extend an Elfa-to-GRVT bot, place trades from Elfa AUTO triggers, set up automated entry plus TP/SL on GRVT perps, author strategies driven by RSI/MACD/price/LLM/cron signals, build a receiver that turns Elfa fires into signed GRVT orders, or hook X social signals to live trades.
 ---
 
-# elfa-grvt-bot
+# elfa-grvt-bot (spec)
 
-A self-hosted automated trading bot. The user describes strategies in natural language to the agent; Elfa AUTO evaluates conditions; a long-running outbound SSE consumer places GRVT perpetual futures orders with atomic TP and SL when conditions fire.
+This skill is a specification, not a packaged project. The bundled `references/` files contain everything a capable agent needs to implement the bot from scratch: wire formats, algorithms in pseudocode, SQLite DDL, failure modes, test vectors, CLI surface, and the captured production bytes that serve as ground truth for the SSE parser.
 
-This skill bundles the full project under `assets/source/`. Drop it into the user's environment, fill in API credentials, and they have a working bot identical to the reference deployment.
+Implement the runtime in Python by default. Other languages are fine as long as the contracts in `references/` are respected exactly: wire formats, dedupe keys, state transitions, alert categories.
 
-## Architecture in one paragraph
+## Scope: this skill sets up the bot LOCALLY
 
-Two surfaces. **Authoring** happens in an agent chat session: the user describes a strategy, the agent frames it as "Notify me when: <description>" and forwards it to Elfa Builder Chat (`POST /v2/auto/chat`), passes the response (conditions and actions) through unchanged to `POST /v2/auto/queries`, and writes a row to a local SQLite registry that maps `query_id` to the order spec. **Execution** happens in an always-on outbound consumer started with `python -m elfa_grvt_bot`: a supervisor polls the local registry every ~5s and, for each `active` strategy without a live task, opens a `GET /v2/auto/queries/:id/stream` SSE connection. When Elfa's conditions evaluate true, the stream emits `event: query.triggered` with a JSON payload whose top-level fields include `eventId` (the canonical dedupe key per docs.elfa.ai), `queryId`, `eventType`, `timestamp`, `channel`, `trigger`, `evaluation`, `action`. The receiver looks up the strategy by `query_id`, fetches the current mark price, runs guardrails, and submits one atomic OTOCO bulk-order to GRVT containing the parent (entry) plus TP (limit, reduce-only) plus SL (trigger, reduce-only). On startup and after every SSE disconnect, the supervisor calls `GET /v2/auto/queries/:id` (poll-query) for **status reconciliation only**: if the remote status is terminal (`triggered` / `expired` / `cancelled` / `failed`) or unsupported by this bot (`recurring`), it syncs the local strategy status and emits an alert -- but it does NOT replay executions through the order path, because `executions[i].id` (`exec_xxx`) is a different identifier namespace from SSE `eventId` (`evt_xxx`) per the documented schemas, so cross-channel dedupe is unsafe. If a strategy fired on Elfa while the receiver was disconnected, the user is alerted to reconcile manually on GRVT. There is no inbound HTTP server, no public URL, and no tunnel. Alerts surface through an in-chat registry check for agents that support project instructions and optionally through Telegram (real-time push if `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are set; silently skipped otherwise).
+The walkthrough in this skill installs and runs the bot on the user's local machine (laptop, workstation, dev box). That is the only deployment shape this skill orchestrates end to end.
+
+The bot's outbound-only architecture (see `01-architecture.md`) makes that viable: no inbound port, no public URL, no tunnel, no reverse proxy. The receiver only opens outbound HTTPS to `api.elfa.ai` (SSE), `*.grvt.io` (orders), and optionally `api.telegram.org`. Once the user has filled in `.env` and run `elfa-grvt-bot bootstrap`, the bot runs.
+
+**If the user later wants to move it off their laptop** (Fly.io, Railway, AWS, a VPS with systemd, etc.) that is out of scope for this skill. The bot is environment-agnostic by design, so the user (or a different skill) can figure it out: same env vars, same code, just point at a persistent volume for `registry.db` and run `elfa-grvt-bot run` under a process supervisor. The trade-offs (laptop sleep loses fires until reconnect vs. managed hosting has geo + cost considerations) are noted in `10-troubleshooting.md` but not orchestrated here.
+
+If a user asks specifically about hosting, point them at `01-architecture.md` -> "Deployment shape" and let them take it from there. Do not extend this skill to drive a cloud deploy.
+
+## Do not build a webhook receiver
+
+The previous architecture for this bot used inbound webhooks: Elfa POSTed triggers to a public HTTPS endpoint hosted by the user (cloudflared tunnel for dev, PaaS with stable hostname for prod). This is NOT how the current bot works. The current bot is SSE-only.
+
+When implementing this spec:
+
+- Do NOT add `flask`, `fastapi`, `aiohttp.web`, `starlette`, or any HTTP server library.
+- Do NOT open a listening socket on any port.
+- Do NOT generate a public URL, suggest `ngrok`/`cloudflared`/tunnel software, or request firewall changes.
+- Do NOT add a webhook endpoint to Elfa as part of the strategy authoring flow. Strategy authoring always uses notify-style actions; SSE delivers the fire on `GET /v2/auto/queries/<id>/stream`.
+
+If a future requirement seems to need a webhook (e.g., "support a delivery channel that pushes to us"), the answer is "this bot is single-direction outbound; either extend Elfa's notify actions to include the new channel and consume it via SSE, or implement a separate service."
+
+## Reading order
+
+Before writing any code, read these in order. Each builds on the last.
+
+1. `references/01-architecture.md` -- system shape, processes, data flow, persistence boundaries.
+2. `references/02-protocols.md` -- exact wire contracts for Elfa, GRVT, Telegram (with captured frames).
+3. `references/03-state.md` -- SQLite schema and invariants.
+4. `references/04-algorithms.md` -- pseudocode for every non-trivial control flow.
+5. `references/05-failure-modes.md` -- the error -> action matrix.
+6. `references/06-libraries.md` -- pinned dependencies and what each is trusted for.
+7. `references/07-test-vectors.md` -- `(input, expected output)` pairs the implementation must pass.
+8. `references/08-cli.md` -- user-facing commands and flags.
+9. `references/09-strategy-authoring.md` -- the chat flow agents follow when a user describes a strategy.
+10. `references/10-troubleshooting.md` -- diagnostic recipes keyed on error signatures.
+
+The numbering is load-bearing: do not jump to algorithms before reading protocols, do not write tests before reading test vectors.
+
+## Implementation order
+
+Once everything is read:
+
+1. Scaffold the project (`pyproject.toml`, package dir, `.env.example`, `tests/`).
+2. Implement state (`03-state.md`) first. Tests for it second. Schema must be exactly as specified; downstream code depends on column names.
+3. Implement protocol clients (Elfa, GRVT, Telegram) per `02-protocols.md`. One module per external service. Use the captured frames as test fixtures.
+4. Implement the algorithms in `04-algorithms.md` in this order: SSE parser -> dedupe -> guardrails -> TP/SL math -> tick alignment -> order placement -> strategy loop -> supervisor.
+5. Implement the CLI (`08-cli.md`).
+6. Verify every test vector in `07-test-vectors.md` passes.
+7. Run preflight against real credentials.
+8. Run `doctor order-builder` to build signed parent/TP/SL payloads without POSTing. Do not proceed to live smoke if this fails.
+9. Run the smoke test in `08-cli.md` only after explicit user approval for a real order.
+
+## What this bot is not
+
+Read these before implementing so you do not silently extend scope:
+
+- **Not a recurring-strategy engine.** Single-fire only. A strategy fires once and transitions to a terminal state. `recurring` queries are rejected (see `03-state.md` for the `failed` mapping).
+- **Not a webhook receiver.** Elfa delivery is outbound SSE only. There is no inbound HTTP server, no public URL, no tunnel.
+- **Not a testnet bot.** Prod-only by design. Refuses to start with `GRVT_ENV != prod`.
+- **Not an order-replay system.** Fires that arrived while the receiver was offline are surfaced via a manual-intervention alert; they are NOT replayed through the order path even if poll-query reports them (see `05-failure-modes.md`).
+- **Not authorized to author EQL.** Elfa Builder Chat (`POST /v2/auto/chat`) is the only authority. The bot always frames the user's strategy as `Notify me when: ...` so Builder Chat emits notify-style actions. The bot never hand-writes or edits the `conditions` block.
+- **Notify-only on the Elfa side.** Authentication is API-key only. The bot frames every strategy as `Notify me when: ...` and consumes triggers via SSE.
+
+## Project-wide conventions
+
+- **No em-dashes (U+2014).** Replace with parens, colons, commas, or hyphens. Convention applies to chat output, code comments, commit messages, alerts, and any text written to external APIs.
+- **ASCII-only in `title`, `description`, and free text sent to Elfa.** Builder Chat is permissive but downstream services may not be.
+- **Fail-closed on parser drift.** If the SSE frame is missing required fields per `02-protocols.md`, drop the frame with a WARNING log; do not attempt to act on partial data. Poll-query reconciliation is the safety net.
+- **Idempotency keyed on `executionId`.** Same UUID across SSE delivery and poll-query rows (verified production). Use it as the primary key in the local `fires` table.
+- **No secret echoing.** When the agent collects credentials from the user, write them directly to `.env` via file edit; never print the value back in chat.
+
+## Active orchestration
+
+When the user asks to install or set up the bot, drive the install end to end:
+
+1. Announce the milestone plan (gather credentials, install, preflight, run, smoke test) with rough time estimates.
+2. Gather credentials **one at a time, step by step** (see protocol below).
+3. Run preflight. If it fails, fix the specific cause from `references/10-troubleshooting.md`; do not re-run blindly.
+4. Start the receiver.
+5. Optionally run the smoke test in `references/08-cli.md`.
+
+Do not declare "ready" until preflight has passed and the receiver process is up.
+
+### Credential-gathering protocol (grouped by source)
+
+Ask for credentials in **three grouped rounds**, one round per source: Elfa, then GRVT, then Telegram. Within a round, ask for everything the user can paste from a single page or app in one message (the GRVT API Keys flow shows the API key and generated EVM private key together). Across rounds, wait for the user to paste before moving to the next source.
+
+**Do NOT ask for credentials from different sources in the same message.** Mixing Elfa + GRVT + Telegram into one big prompt overwhelms the user. Group within source, separate across sources.
+
+For each round:
+
+1. **State which source you need credentials from**, and list every value you need from that source.
+2. **Tell the user where to get them** with the exact URL or app, the click path inside that page, and what each value looks like.
+3. **Stop and wait for the user's reply.** Do not preview the next round.
+4. **When the user pastes the values:**
+   a. Write each value into `.env` immediately via file edit. Never echo any value back in chat.
+   b. Reply with one line confirming what was saved (NOT the values themselves), e.g. "Saved GRVT API key and private key."
+   c. Move to the next round.
+5. **When all required rounds are complete**, run preflight automatically; do not ask permission first.
+
+The three rounds:
+
+**Round 1: Elfa.** Ask for:
+- `ELFA_API_KEY`
+
+Where: sign up free at `https://go.elfa.ai/claude-skills`, click `Generate API Key`. It looks like `elfak_<32 hex chars>`.
+
+**Round 2: GRVT.** Ask for two values:
+- `GRVT_TRADING_API_KEY`
+- `GRVT_TRADING_PRIVATE_KEY`
+
+Where: `https://grvt.io` -> sign in -> Settings -> API Keys. **Use the "Trading API Key" type, not the Funding API Key.** The page shows both values together (API key string and EVM private key starting with `0x`). The user pastes both in one message; you parse them.
+
+**Do NOT ask the user for `GRVT_TRADING_ACCOUNT_ID`.** It is auto-discovered: when preflight calls `POST https://edge.grvt.io/auth/api_key/login` with the trading API key, the response includes `sub_account_id`. Preflight writes that value to `.env` as `GRVT_TRADING_ACCOUNT_ID` automatically. Manual paste of this id is friction we explicitly avoid.
+
+**If the user does not have a GRVT account yet:** share the signup link `https://grvt.io/?ref=LN2DP6F` first. As of this spec's last live walkthrough, signup did not require KYC before API-key creation, but this can change. Have them sign up, deposit, then return for the credentials.
+
+For all low-level GRVT operations (login, fetching markets, placing orders, setting leverage), this spec depends on patterns published by GRVT in `gravity-technologies/grvt-skills/skills/perpetual-trading`. The implementer should treat that skill as the canonical reference for the GRVT API surface; this spec extends it with the Elfa-to-GRVT bridge and atomic OTOCO via `bulk_orders` v2.
+
+**Round 3: Telegram (optional).** First ask whether the user wants Telegram push at all (in-chat alerts work without it). If no, leave both Telegram env vars blank and skip to preflight.
+
+If yes, this round has two parts because they cannot be collected from a single page:
+
+3a. Ask for `TELEGRAM_BOT_TOKEN`. Where: open Telegram, message `@BotFather`, send `/newbot`, pick a name and a username ending in `bot`. BotFather replies with the token (looks like `123456789:ABC-DEF...`).
+
+3b. After 3a is saved, get `TELEGRAM_CHAT_ID` automatically. Ask the user to send their new bot any message in Telegram. After they confirm, YOU run the `getUpdates` curl call to extract the chat id (do not make the user do this manually):
+
+```bash
+curl -s "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getUpdates" | jq '.result[0].message.chat.id'
+```
+
+If `result` is empty, the user has not actually messaged the bot yet OR they messaged a different bot. Confirm the bot username via `getMe` and prompt them to message the right handle.
+
+Across rounds, the user may pause, ask questions, or take time to navigate. Do not chase. Each round ends when the values for that source are saved; the next round begins on your next turn.
 
 ## When to use this skill
 
-Trigger when the user's request relates to any of:
-
-- Setting up, installing, or bootstrapping the bot from scratch
-- Authoring a new strategy (RSI / MACD / stochastic / price / LLM-condition triggers, or any combination)
-- Cancelling or listing existing strategies
-- Diagnosing a strategy that fired but did not place an order
-- Authoring a strategy on a new symbol (the agent verifies it exists on GRVT during authoring; no allowlist to maintain)
-- Migrating from a local run to a PaaS deploy (Fly.io, Railway, Render, VPS)
-- Fixing or extending the OTOCO order placement code (see `references/grvt-api.md`)
-- Investigating a Telegram alert that says `manual_intervention_required`
-- Anything that involves both Elfa AUTO and GRVT in the same flow
-
-If the user only mentions one side (e.g. just an Elfa AUTO query, or just a GRVT order), use this skill anyway because the reference patterns and gotchas are the cleanest source of truth for either side standalone.
-
-## Active orchestration: do not stop until the user is "good to go"
-
-When this skill is triggered for setup ("install the bot", "get this running", "set me up"), act as the orchestrator. Drive the install end to end. Do not return control to the user mid-flow with docs to read; walk them through every blocker until the system is in the ready state.
-
-### Operational transparency: announce the plan, then narrate progress
-
-**Before doing anything else**, post a single message to the user listing the milestones you will hit and a rough sense of where time will be spent. This sets expectations and lets them say "actually skip Telegram" up front. Use this template (adapt wording, but keep the structure):
-
-> Setting up the elfa-grvt-bot. Here's the plan:
->
-> 1. **Gather credentials** - Elfa API key, GRVT API key + private key + trading account ID, optionally Telegram bot token + chat ID. (You'll paste these into chat; I won't echo them back.)
-> 2. **Bootstrap install** - copy source, create venv, install deps, run tests, validate .env. (Mostly automated; ~1-2 min.)
-> 3. **Start the receiver** - `python -m elfa_grvt_bot`; the supervisor opens SSE streams for each active strategy automatically.
-> 4. **Verify end to end** - smoke test, optionally ping Telegram.
->
-> I'll mark each milestone as we go. First up: credentials.
-
-**At each milestone**, post a short progress callout so the user always knows where they are. Use round-number percentages keyed to the 4 milestones above (25% / 50% / 75% / 100%) - not the internal bootstrap phases. Examples:
-
-> Credentials saved. **(25% complete - bootstrap install next, ~1-2 min.)**
-
-> Bootstrap exited clean, dependencies installed, env validated. **(50% complete - starting the receiver.)**
-
-> Receiver running (`pgrep -f elfa_grvt_bot` confirms). **(75% complete - final end-to-end check.)**
-
-> All checks passed. **(100% - ready.)**
-
-If something fails and you have to retry, say so explicitly ("hit a snag on the install - retrying, still around 50%") rather than silently looping. Bootstrap itself prints `[N% complete] phase X/6: ...` banners - feel free to surface those raw if it speeds things up, but the user-facing percentages above are the ones to lead with.
-
-**Definition of "good to go":**
-1. Bootstrap script (`scripts/bootstrap.py`) has been run and exited zero.
-2. `~/elfa_grvt_bot/.env` has all required env vars filled (no blank values for ELFA / GRVT credentials). Telegram vars are OPTIONAL: if both are set, real-time push is enabled; if either is missing, alerts go in-chat only.
-3. Receiver process is running (`pgrep -f elfa_grvt_bot` shows one process).
-4. The user has been told they can now describe a strategy in chat.
-
-Until all four are true, keep working. If a step fails, diagnose and try again. Do not say "now you do X" and stop; you do X, or guide the user through it inline, then verify and continue.
-
-**The orchestration loop:**
-
-1. Run `python3.11 <skill-path>/scripts/bootstrap.py` using the actual path where this skill is installed.
-2. If it exits zero with the "Bootstrap complete" banner, jump to the readiness check.
-3. If it exits with `env incomplete`, walk the user through credential gathering (next subsection). After they share each value, write it directly into `~/elfa_grvt_bot/.env` using the Edit tool. Never echo a secret back to the user in your response. Then re-run bootstrap.
-4. If it exits with any other error, read the relevant log (`receiver.log` in the target dir) and address the specific cause. Do not guess. Common ones are documented in `references/troubleshooting.md`.
-5. Repeat until bootstrap succeeds.
-6. Run the readiness check (next subsection) and confirm to the user.
-
-### Walking the user through credential gathering
-
-When bootstrap reports missing env vars, address each one in order. For each:
-- State which credential is missing.
-- Give the exact URL or app where to get it.
-- Walk through the click path inside that page or app.
-- Tell the user how to identify the value (length, format).
-- Ask them to paste the value into chat.
-- Write it into `.env` immediately via the Edit tool. **Do not echo the value back in any subsequent message.** Just say "saved".
-- Move on to the next missing var.
-
-The walk-throughs themselves are in `references/setup.md` sections 3-5. Read that file before starting credential gathering so you have the URLs and steps in context.
-
-Order of operations (least painful first):
-1. **Elfa credentials** (free signup, single API key from the developer portal).
-2. **GRVT credentials** (requires a funded account; this project is **prod-only** and refuses to start with any other `GRVT_ENV`. Confirm with the user that they have a funded prod account before they paste credentials).
-3. **Telegram bot token + chat id** (OPTIONAL). Ask the user explicitly whether they want Telegram push alerts. In-chat registry alerts work without Telegram, so this is purely "do you want a phone notification too?" If they decline, leave both vars blank in `.env` and skip Telegram setup entirely. If they accept, walk them through `@BotFather` -> `/newbot`, save the token, and continue:
-
-For Telegram specifically (only if the user opted in), after they get the bot token, run the `getUpdates` curl call yourself via the Bash tool to extract `chat_id` (saves the user a manual step):
-
-```bash
-TOKEN=<bot_token>
-curl -s "https://api.telegram.org/bot$TOKEN/getUpdates" | python -m json.tool
-```
-
-Tell the user "send your new bot any message in Telegram" before you run this; otherwise `getUpdates` returns an empty `result` array.
-
-For GRVT, before the user pastes the private key, confirm with them: "This is live money on GRVT prod (the only env this bot supports). Continue?" If they want a sandbox first, the answer is "no, this project doesn't run on testnet"; they would need to fork the source and re-enable testnet in `Config`.
-
-### Readiness check
-
-Once bootstrap succeeds:
-
-```bash
-# 1. .env has every REQUIRED key set (Telegram is optional, not in this list)
-grep -E '^(ELFA_API_KEY|GRVT_API_KEY|GRVT_PRIVATE_KEY|GRVT_TRADING_ACCOUNT_ID|REGISTRY_DB_PATH)=' ~/elfa_grvt_bot/.env | grep -v '^[^=]*=$'
-# every line should print "VAR=value", none with empty value
-
-# 2. receiver process is running
-pgrep -f elfa_grvt_bot
-# should print one PID
-
-# 3. (only if Telegram is configured) send a Telegram ping so the user sees push works
-TOKEN=$(grep '^TELEGRAM_BOT_TOKEN=' ~/elfa_grvt_bot/.env | cut -d= -f2-)
-CHAT=$(grep '^TELEGRAM_CHAT_ID=' ~/elfa_grvt_bot/.env | cut -d= -f2-)
-if [ -n "$TOKEN" ] && [ -n "$CHAT" ]; then
-  curl -s -X POST "https://api.telegram.org/bot$TOKEN/sendMessage" \
-       -d "chat_id=$CHAT&text=elfa_grvt_bot setup complete - ready to send you notifications"
-fi
-```
-
-If all required checks pass, tell the user. If Telegram is configured, say:
-
-> Setup complete. Receiver running, in-chat alerts, and Telegram are all live. You can now describe a trading strategy and I will create it. For example: "Long 0.5 SOL_USDT_Perp at 20x when 1h RSI dips below 30, TP 1.5%, SL 1%."
-
-If Telegram is NOT configured, say:
-
-> Setup complete. Receiver running and in-chat alerts are live (Telegram skipped, alerts will land in chat each turn). You can now describe a trading strategy and I will create it. For example: "Long 0.5 SOL_USDT_Perp at 20x when 1h RSI dips below 30, TP 1.5%, SL 1%."
-
-Then stand by. The next request likely is a strategy description, and you should follow `references/strategy-authoring.md` (or `~/elfa_grvt_bot/AGENTS.md`, which is the same flow shipped into the working directory).
-
-If any required readiness check fails, diagnose and fix; do not declare ready until the receiver process is running and required env vars are all present.
-
-## Setup walkthrough (first-time install)
-
-### Step 1: Run the bootstrap script
-
-The skill ships an end-to-end orchestrator at `scripts/bootstrap.py` that does almost everything: copies the source, creates a venv, installs deps, runs the test suite, validates env vars, starts the receiver in the background, and verifies the install.
-
-The user only has to:
-1. Run the bootstrap once.
-2. Fill in API credentials when bootstrap reports the env is incomplete.
-3. Re-run bootstrap.
-
-When this skill triggers on a fresh system, your default action should be to run `python3.11 <skill-path>/scripts/bootstrap.py` for the user. Use the actual path where the skill is unpacked.
-
-```bash
-python3.11 <skill-path>/scripts/bootstrap.py
-```
-
-The script defaults to `~/elfa_grvt_bot/` as the working directory; pass `--target <path>` to override. It is idempotent: rerunning detects an already-running receiver and reuses it where possible.
-
-On the first run with an empty `.env`, the script prints the missing variables and exits. The user fills them in, then runs the script again. On the second run it picks up where it left off.
-
-If anything in the script fails (e.g. dependency install error, receiver crash on boot), it prints the relevant log and exits non-zero. Look at `~/elfa_grvt_bot/receiver.log` for details, then re-run after fixing.
-
-After a successful run the receiver is running (`pgrep -f elfa_grvt_bot` confirms), and the user can open their preferred agent in `~/elfa_grvt_bot` and start authoring strategies immediately.
-
-To stop the receiver: `bash ~/elfa_grvt_bot/teardown.sh` (the bootstrap drops this script too).
-
-### Step 2: Manual setup (only if bootstrap is not an option)
-
-If for some reason the user prefers manual installation, the steps are below. Otherwise skip this section.
-
-```bash
-mkdir -p ~/elfa_grvt_bot
-cp -R <skill-path>/assets/source/. ~/elfa_grvt_bot/
-cd ~/elfa_grvt_bot
-python3.11 -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
-pytest -q
-```
-
-Tests should report `100+ passed`. If they do not, something is wrong with the install. See `references/troubleshooting.md`.
-
-Then continue with credential gathering and running the receiver as documented in `references/setup.md`.
-
-### Step 3: Gather API credentials
-
-The user needs:
-
-| Var | Source |
-|---|---|
-| `ELFA_API_KEY` | Elfa developer portal |
-| `GRVT_API_KEY` | grvt.io UI: Settings, API Keys |
-| `GRVT_PRIVATE_KEY` | grvt.io UI: same page (the EVM private key paired with the API key) |
-| `GRVT_TRADING_ACCOUNT_ID` | grvt.io UI: shown next to the API key (numeric sub-account id) |
-| `TELEGRAM_BOT_TOKEN` | OPTIONAL. `@BotFather` on Telegram (`/newbot`) |
-| `TELEGRAM_CHAT_ID` | OPTIONAL. Send your bot any message, then `curl https://api.telegram.org/bot<token>/getUpdates` and read `result[0].message.chat.id` |
-
-**Auth detail**: per `docs.elfa.ai/api/rest/auto-create-query-v-2`, HMAC signing on `/v2/auto/queries` is conditional - required for trade-flavoured actions (`market_order`, `limit_order`, or `llm` callbacks to them), not required for notification-only actions (`notify`, `telegram_bot`, `webhook`, or `llm` callbacks to those). This bot only creates notify-style queries (the authoring flow always prepends `Notify me when:` so Builder Chat emits notify actions), so `ELFA_API_KEY` is the only Elfa secret needed. Streaming and validate are always API-key-only.
-
-### Step 4: Populate `.env` and re-run bootstrap
-
-After Step 3, edit `~/elfa_grvt_bot/.env` and fill in every key from the credentials table. `GRVT_ENV` is locked to `prod`; do not change it. There is no symbol allowlist: the agent verifies each new symbol against GRVT's `fetch_market` during authoring, and if it doesn't exist, says so and stops.
-
-Re-run the bootstrap:
-
-```bash
-python3.11 <skill-path>/scripts/bootstrap.py
-```
-
-It now finds all required env vars, runs through install (idempotent if already done), starts the receiver, and verifies the install.
-
-### Step 5: Verify end to end
-
-Run the smoke test in `assets/source/docs/SMOKE_TEST.md`. It opens a tiny ($5+ notional) market position with TP and SL, then has the user manually unwind. This proves every link in the chain works.
-
-## Strategy authoring flow
-
-When an agent session is opened in the user's working directory, the project's generated `AGENTS.md` drives the authoring flow. At a high level, when the user describes a strategy in chat:
-
-1. Read pending alerts first (`python src/registry_cli.py alerts --pending`). Surface any unacked alerts at the top of the response.
-2. Forward the user's description to Elfa Builder Chat (`POST /v2/auto/chat`, body field `message`, API-key auth). **Always** frame the user's description as `Notify me when: <description>` so Builder Chat emits a notify-style action (never an execute/trade action). The response shape is `{sessionId, response, title, reasoning, planIds}` per `docs.elfa.ai/api/rest/auto-chat-v-2`; `response` is markdown text with the EQL embedded in a fenced JSON code block. **Extract that JSON block verbatim** and pass it as the `query` field of the `POST /v2/auto/queries` body (alongside `title`/`description` taken from Builder Chat's `title` or the user's intent). Never hand-write or hand-edit the `conditions` block. If Builder Chat's draft doesn't match the user's intent, re-prompt with `sessionId` set for context, or ask the user to rephrase; do not patch the JSON yourself. The actions emitted by Builder Chat (`notify`, `telegram_bot`, etc.) are irrelevant for execution because this bot consumes triggers via SSE on the query's id, not via the actions block - but pass them through unchanged anyway.
-3. Ask the user for any GRVT order params they did not volunteer: symbol (verify via `GrvtCcxt.fetch_market(symbol)` from the grvt-trading skill before continuing - if it raises, tell the user "GRVT doesn't have that token" and stop), size, order type, optional limit price, optional leverage, optional time-in-force, `max_notional_usd` cap, optional `tp_pct` and `sl_pct`.
-4. Validate via `POST /v2/auto/queries/validate`.
-5. Show the full plan and wait for an explicit "yes".
-6. On approval, `POST /v2/auto/queries` with the validated body unchanged. Then `python src/registry_cli.py add ...` to register locally. The receiver's supervisor picks up the new strategy on its next poll (~5s) and opens an SSE stream for it automatically.
-
-Specifics, defaults, and constraints are in `references/strategy-authoring.md`.
-
-## Things to never do
-
-- **Never use em-dashes** in chat output, code, commits, alerts, or any external API content. Replace with parentheses, colons, commas, or hyphens. Project-wide convention for ASCII-only output.
-- **Never author or hand-edit EQL.** Builder Chat is the only authority. Forward the user's description as `Notify me when: ...` and pass the full Builder Chat response (conditions AND actions) through to `POST /v2/auto/queries` unchanged. If the conditions don't match user intent, re-prompt Builder Chat or ask the user to rephrase; do not patch the JSON yourself.
-- **The Elfa-side action must always be notify-style** (`notify`, `telegram_bot`, etc.). Always prepend `Notify me when:` before calling Builder Chat. Never use `/v2/auto/exchanges`, never manually inject `market_order`, `limit_order`, or any exchange-execution action. Order placement is owned by our receiver.
-- **Never set up `I_UNDERSTAND_REAL_MONEY=yes` or any equivalent gate.** This project is prod-only. The safety layer is the explicit per-strategy "yes" in chat before activation, and the per-strategy `max_notional_usd` cap.
-- **Never rely on session memory for live position state.** Before reporting positions, balance, or open orders, poll GRVT live (`fetch_positions`, `fetch_balance`, `fetch_open_orders`). Local registry holds strategy metadata only.
-- **Never write secrets into the registry or any file that gets committed.** `.env` is in `.gitignore`.
-
-## Reference layout
-
-| File | When to read |
-|---|---|
-| `references/setup.md` | Detailed setup walkthrough; if the quick start above is insufficient |
-| `references/elfa-eql.md` | Understanding EQL returned by Builder Chat (operators, condition sources, depth limits). The agent never authors EQL; this is a read-only reference. |
-| `references/elfa-sse.md` | SSE stream details: canonical event format, `eventId` dedupe key, single-fire semantics, poll-query status reconciliation |
-| `references/grvt-api.md` | OTOCO via `full/v2/bulk_orders`, EIP-712 signing, deprecated endpoints, tick alignment |
-| `references/strategy-authoring.md` | The full chat flow when a user describes a strategy |
-| `references/troubleshooting.md` | Common errors and what they mean |
-| `assets/source/AGENTS.template.md` | Agent-neutral project instruction template; `bootstrap.py` copies it to `AGENTS.md` in the user's project |
-
-## Helper scripts
-
-| Script | Purpose |
-|---|---|
-| `scripts/bootstrap.py` | **Default.** End-to-end orchestrator: copy source, venv + install + tests, env-var validation, receiver start, end-to-end verify |
-| `scripts/install.sh` | Manual install only: copy source + venv + deps + tests |
-| `scripts/start_receiver.sh` | Manually start the receiver after `.env` is sourced |
-| `teardown.sh` (written into target dir by bootstrap.py) | Stop the receiver started by bootstrap |
-
-`bootstrap.py` is the path you should default to. The other scripts exist for users who want to run individual steps manually.
+- Setting up the bot from scratch.
+- Authoring a strategy (RSI / MACD / price / LLM / cron, or any combination).
+- Cancelling or listing strategies.
+- Diagnosing a strategy that fired but did not place an order.
+- Migrating from local run to a hosted environment (Fly.io, Railway, VPS).
+- Investigating a `manual_intervention_required` alert.
+- Extending the OTOCO order placement path (see `references/02-protocols.md` and `references/04-algorithms.md`).
+
+If the user mentions only one side ("Elfa AUTO trade execution" or "GRVT TP/SL via API"), use this skill anyway; the references are the cleanest source of truth for either side standalone.
