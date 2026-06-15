@@ -5,7 +5,9 @@ description: >
   trending tokens, narratives, mentions, smart account stats, token news, trending contract
   addresses, AI market chat, integration examples, curl/code snippets, automated alerts,
   EQL queries, trigger pipelines, and agent workflows that react to market conditions.
-  Supports API-key calls and x402 pay-per-request USDC on Base.
+  Auto can also place live perp trades on Hyperliquid and GMX (market/limit orders with
+  TP/SL) when a condition fires, and tracks crypto plus HIP-3 assets (tokenized equities,
+  commodities, FX). Supports API-key calls and x402 pay-per-request USDC on Base.
 ---
 
 # Elfa API Skill
@@ -151,7 +153,7 @@ _Other:_
 
 | Endpoint | Method | Description | Auth |
 |---|---|---|---|
-| `/v2/auto/validate-tradable-symbol/:symbol` | GET | Check whether a symbol is tradable as a Hyperliquid perp (pre-flight for trade actions) | API key |
+| `/v2/auto/validate-tradable-symbol/:symbol` | GET | Check whether a symbol is tradable as a perp on a supported venue (Hyperliquid / GMX) — pre-flight for trade actions | API key |
 
 **x402 mode (`/x402/v2/auto/*`)** — note: some routes use POST instead of GET:
 
@@ -221,7 +223,7 @@ Use the `bash_tool` to call the Elfa API via curl.
 
 **Free tier limitations:**
 The free tier provides 1,000 credits that work on most endpoints. However, some endpoints
-(such as trending narratives and AI chat) require a paid plan (PAYG, Grow, or Enterprise).
+(such as trending narratives and AI chat) require a paid plan (Chill, Grow, Enterprise, or PAYG).
 Check https://go.elfa.ai/claude-skills for the latest tier requirements.
 
 If a user hits an authorization error on one of these endpoints, let them know they can
@@ -447,7 +449,7 @@ const body = JSON.stringify({
   description: "Notify when BTC trades above 100k.",
   query: {
     conditions: {
-      AND: [{ source: "price", method: "current", args: { symbol: "BTC" }, operator: ">", value: 100000 }]
+      AND: [{ source: "price", method: "current", args: { symbol: "BTC", exchange: "hyperliquid" }, operator: ">", value: 100000 }]
     },
     actions: [{ stepId: "step_1", type: "notify", params: { message: "BTC crossed 100k" } }],
     expiresIn: "24h"
@@ -474,7 +476,7 @@ const response = await fetch("https://api.elfa.ai/v2/auto/queries", {
 TIMESTAMP=$(date +%s)
 METHOD="POST"
 PATH_SIGN="/queries"
-BODY='{"title":"BTC alert","query":{"conditions":{"AND":[{"source":"price","method":"current","args":{"symbol":"BTC"},"operator":">","value":100000}]},"actions":[{"stepId":"step_1","type":"notify","params":{"message":"BTC crossed 100k"}}],"expiresIn":"24h"}}'
+BODY='{"title":"BTC alert","query":{"conditions":{"AND":[{"source":"price","method":"current","args":{"symbol":"BTC","exchange":"hyperliquid"},"operator":">","value":100000}]},"actions":[{"stepId":"step_1","type":"notify","params":{"message":"BTC crossed 100k"}}],"expiresIn":"24h"}}'
 SIGNATURE=$(echo -n "${TIMESTAMP}${METHOD}${PATH_SIGN}${BODY}" | openssl dgst -sha256 -hmac "$ELFA_HMAC_SECRET" | cut -d' ' -f2)
 
 curl -s -X POST "https://api.elfa.ai/v2/auto/queries" \
@@ -589,7 +591,7 @@ const response = await x402Fetch(
     },
     body: JSON.stringify({
       query: {
-        conditions: { AND: [{ source: "price", method: "current", args: { symbol: "BTC" }, operator: ">", value: 100000 }] },
+        conditions: { AND: [{ source: "price", method: "current", args: { symbol: "BTC", exchange: "hyperliquid" }, operator: ">", value: 100000 }] },
         actions: [{ stepId: "step_1", type: "notify", params: { message: "BTC crossed 100k" } }],
         expiresIn: "24h"
       }
@@ -803,7 +805,7 @@ A query contains `conditions`, `actions`, and `expiresIn`:
       {
         "source": "ta",
         "method": "rsi",
-        "args": { "symbol": "BTC", "timeframe": "1h", "period": 14 },
+        "args": { "symbol": "BTC", "timeframe": "1h", "period": 14, "exchange": "hyperliquid" },
         "operator": "<",
         "value": 30
       }
@@ -832,43 +834,56 @@ A query contains `conditions`, `actions`, and `expiresIn`:
 | `notify` | `message` (1–1000 chars) | — |
 | `webhook` | `url` (https only, allowlisted host) | `allNotifications` (default `false`) |
 | `telegram_bot` | `botToken`, `chatId` | `allNotifications` (default `false`) |
-| `market_order` / `limit_order` | `exchange`, `symbol`, `side`, and `size` XOR `amount` (+ `price` for limit) | `reduceOnly`, `leverage`, `tp`, `sl` |
-| `llm` | `objective` for standalone LLM work, or `action` + `callback.action` for chained follow-up | `speed` (`fast` / `expert`), per-action extras |
+| `market_order` / `limit_order` | `exchange` (`hyperliquid` / `gmx`), `symbol`, `side` (`buy` / `sell`), and `size` XOR `amount` (+ `price` for limit) | `reduceOnly`, `leverage`, `marginType` (`cross` / `isolated`), `tp`, `sl` |
+| `llm` | `objective` for standalone LLM work, or `action` + `callback.action` for chained follow-up | `action` ∈ `chat` / `summary` / `macro` / `accountAnalysis` / `tokenDiscovery` / `tokenAnalysis`; `speed` (`fast` / `expert`), per-action extras |
 
 `telegram_bot` does **not** take a `message` field — the message body is auto-composed from the query `title` + `description` + trigger context. Use `notify` (in-app push) when you want to specify the message text yourself. `allNotifications: true` on `webhook` / `telegram_bot` opts the destination into lifecycle notifications (failed/expired/run-failed) in addition to the trigger fire.
 
 #### Triggers — condition sources
 
+**Market-data venue (`exchange`) — REQUIRED on every `price` and `ta` condition:**
+
+Every `price` and `ta` condition must include an `exchange` arg that selects which venue's
+market data backs the condition. Allowed values: `hyperliquid`, `gmx` (exact lowercase
+enum). This arg **only affects the data source** of the condition — it is independent of
+where `market_order` / `limit_order` actions execute. A `price`/`ta` condition without
+`exchange` fails validation.
+
+```json
+{ "source": "price", "method": "current", "args": { "symbol": "BTC", "exchange": "hyperliquid" }, "operator": ">", "value": 100000 }
+```
+
 **Price source (`price`):**
 
 | Method | Args | Returns | Description |
 |---|---|---|---|
-| `current` | `symbol` | number | Current price |
-| `change` | `symbol`, `period` | number | % change over period |
-| `high` | `symbol`, `period` | number | High in period |
-| `low` | `symbol`, `period` | number | Low in period |
-| `volume` | `symbol`, `period` | number | Volume (USD) over period |
+| `current` | `symbol`, `exchange` | number | Current price |
+| `change` | `symbol`, `exchange`, `period` | number | % change over period |
+| `high` | `symbol`, `exchange`, `period` | number | High in period |
+| `low` | `symbol`, `exchange`, `period` | number | Low in period |
+| `volume` | `symbol`, `exchange`, `period` | number | Volume (USD) over period |
 
-**TA source (`ta`) — technical indicators:**
+**TA source (`ta`) — technical indicators:** every method also requires `symbol`, `timeframe`, **and `exchange`**.
 
 | Method | Required args | Optional args | Returns |
 |---|---|---|---|
-| `rsi` | `symbol`, `timeframe` | `period` (default 14) | RSI (0-100) |
-| `macd_value` | `symbol`, `timeframe` | — | MACD line |
-| `macd_signal` | `symbol`, `timeframe` | — | MACD signal line |
-| `macd_histogram` | `symbol`, `timeframe` | — | MACD histogram |
-| `bbands_upper` | `symbol`, `timeframe` | `period` (default 20) | Upper Bollinger Band |
-| `bbands_middle` | `symbol`, `timeframe` | `period` (default 20) | Middle Bollinger Band |
-| `bbands_lower` | `symbol`, `timeframe` | `period` (default 20) | Lower Bollinger Band |
-| `ema` | `symbol`, `timeframe`, `period` | — | Exponential MA |
-| `sma` | `symbol`, `timeframe`, `period` | — | Simple MA |
-| `atr` | `symbol`, `timeframe` | `period` (default 14) | Average True Range |
-| `stoch_k` | `symbol`, `timeframe` | — | Stochastic %K |
-| `stoch_d` | `symbol`, `timeframe` | — | Stochastic %D |
-| `cci` | `symbol`, `timeframe` | `period` (default 20) | CCI |
-| `willr` | `symbol`, `timeframe` | `period` (default 14) | Williams %R |
+| `rsi` | `symbol`, `timeframe`, `exchange` | `period` (default 14) | RSI (0-100) |
+| `macd_value` | `symbol`, `timeframe`, `exchange` | — | MACD line |
+| `macd_signal` | `symbol`, `timeframe`, `exchange` | — | MACD signal line |
+| `macd_histogram` | `symbol`, `timeframe`, `exchange` | — | MACD histogram |
+| `bbands_upper` | `symbol`, `timeframe`, `exchange` | `period` (default 20) | Upper Bollinger Band |
+| `bbands_middle` | `symbol`, `timeframe`, `exchange` | `period` (default 20) | Middle Bollinger Band |
+| `bbands_lower` | `symbol`, `timeframe`, `exchange` | `period` (default 20) | Lower Bollinger Band |
+| `ema` | `symbol`, `timeframe`, `exchange`, `period` | — | Exponential MA |
+| `sma` | `symbol`, `timeframe`, `exchange`, `period` | — | Simple MA |
+| `atr` | `symbol`, `timeframe`, `exchange` | `period` (default 14) | Average True Range |
+| `stoch_k` | `symbol`, `timeframe`, `exchange` | — | Stochastic %K |
+| `stoch_d` | `symbol`, `timeframe`, `exchange` | — | Stochastic %D |
+| `cci` | `symbol`, `timeframe`, `exchange` | `period` (default 20) | CCI |
+| `willr` | `symbol`, `timeframe`, `exchange` | `period` (default 14) | Williams %R |
 
 **TA critical rules:**
+- Every `ta` (and `price`) condition **requires `exchange`** (`hyperliquid` or `gmx`)
 - `ema` and `sma` **require** `period` — it is NOT optional
 - `rsi`, `bbands_*`, `atr`, `cci`, and `willr` accept optional `period` with documented defaults above
 - `period` must be a JSON number (`14`), not a string (`"14"`)
@@ -976,12 +991,12 @@ Additional constraints:
 {
   "source": "price",
   "method": "current",
-  "args": { "symbol": "ETH" },
+  "args": { "symbol": "ETH", "exchange": "hyperliquid" },
   "operator": "crosses_above",
   "value": {
     "source": "ta",
     "method": "bbands_upper",
-    "args": { "symbol": "ETH", "timeframe": "4h" }
+    "args": { "symbol": "ETH", "timeframe": "4h", "exchange": "hyperliquid" }
   }
 }
 ```
@@ -994,7 +1009,7 @@ Additional constraints:
 {
   "title": "BTC breakout above 100k",
   "description": "Notify runner when BTC spot trades above the 100k level.",
-  "conditions": { "AND": [{ "source": "price", "method": "current", "args": { "symbol": "BTC" }, "operator": ">", "value": 100000 }] },
+  "conditions": { "AND": [{ "source": "price", "method": "current", "args": { "symbol": "BTC", "exchange": "hyperliquid" }, "operator": ">", "value": 100000 }] },
   "actions": [{ "stepId": "step_1", "type": "webhook", "params": { "url": "https://your-endpoint.example/events" } }],
   "expiresIn": "24h"
 }
@@ -1006,7 +1021,7 @@ Additional constraints:
 {
   "title": "ETH downside guardrail (< 2500)",
   "description": "Risk-off alert: flag if ETH breaks below 2500. The notification body is auto-composed from title + description + trigger context.",
-  "conditions": { "AND": [{ "source": "price", "method": "current", "args": { "symbol": "ETH" }, "operator": "<", "value": 2500 }] },
+  "conditions": { "AND": [{ "source": "price", "method": "current", "args": { "symbol": "ETH", "exchange": "hyperliquid" }, "operator": "<", "value": 2500 }] },
   "actions": [{ "stepId": "step_1", "type": "telegram_bot", "params": { "botToken": "<TELEGRAM_BOT_TOKEN>", "chatId": "<TELEGRAM_CHAT_ID>" } }],
   "expiresIn": "24h"
 }
@@ -1018,7 +1033,7 @@ Additional constraints:
 {
   "title": "BTC > 100k — LLM review",
   "description": "On BTC breakout, run LLM to decide next trading action.",
-  "conditions": { "AND": [{ "source": "price", "method": "current", "args": { "symbol": "BTC" }, "operator": ">", "value": 100000 }] },
+  "conditions": { "AND": [{ "source": "price", "method": "current", "args": { "symbol": "BTC", "exchange": "hyperliquid" }, "operator": ">", "value": 100000 }] },
   "actions": [{
     "stepId": "step_1",
     "type": "llm",
@@ -1036,8 +1051,8 @@ Additional constraints:
   "description": "Confirm majors moving together before acting.",
   "conditions": {
     "AND": [
-      { "source": "price", "method": "current", "args": { "symbol": "BTC" }, "operator": ">", "value": 100000 },
-      { "source": "price", "method": "current", "args": { "symbol": "ETH" }, "operator": ">", "value": 3500 }
+      { "source": "price", "method": "current", "args": { "symbol": "BTC", "exchange": "hyperliquid" }, "operator": ">", "value": 100000 },
+      { "source": "price", "method": "current", "args": { "symbol": "ETH", "exchange": "hyperliquid" }, "operator": ">", "value": 3500 }
     ]
   },
   "actions": [{ "stepId": "step_1", "type": "notify", "params": { "message": "BTC and ETH confirmation fired" } }],
@@ -1053,9 +1068,9 @@ Additional constraints:
   "description": "Dynamic: fire when ETH price crosses above its own 4h upper Bollinger Band.",
   "conditions": {
     "AND": [{
-      "source": "price", "method": "current", "args": { "symbol": "ETH" },
+      "source": "price", "method": "current", "args": { "symbol": "ETH", "exchange": "hyperliquid" },
       "operator": "crosses_above",
-      "value": { "source": "ta", "method": "bbands_upper", "args": { "symbol": "ETH", "timeframe": "4h" } }
+      "value": { "source": "ta", "method": "bbands_upper", "args": { "symbol": "ETH", "timeframe": "4h", "exchange": "hyperliquid" } }
     }]
   },
   "actions": [{ "stepId": "step_1", "type": "webhook", "params": { "url": "https://your-endpoint.example/events" } }],
@@ -1185,10 +1200,31 @@ outbound notification (Telegram, webhook, SSE). Recipients often see an alert ho
 after the query was set up — these fields are what make it clear **what** fired and **why
 it was set up**. Always set them.
 
-#### Canonical event payload contract
+#### Notification payload (what Auto actually sends)
 
-Normalize all incoming events (webhook, Telegram relay, SSE) to this internal shape to keep
-downstream processing consistent:
+Auto's outbound notification object (webhook body, SSE `data`) has this shape:
+
+```json
+{
+  "id": 12345,
+  "type": "athena_query_notify_only",
+  "category": "alerts",
+  "title": "BTC breakout above 100k",
+  "body": "price > threshold",
+  "data": { "queryId": "q_123" },
+  "priority": "high",
+  "createdAt": "2026-04-01T12:00:00.000Z"
+}
+```
+
+`id` is the numeric notification ID; correlate back to a query via `data.queryId`. `title`
+and `body` come from the query's `title` / `description` plus trigger context.
+
+#### Canonical event payload contract (internal normalization)
+
+It's useful to normalize incoming events (webhook, Telegram relay, SSE) to a single internal
+shape so downstream processing is channel-agnostic. This is a **recommended runner-side
+convention**, not the wire format Auto sends (see the payload above):
 
 ```json
 {
@@ -1215,13 +1251,16 @@ downstream processing consistent:
 | `X-Auto-Signature-Timestamp` | Unix seconds for replay-window check |
 | `X-Auto-Signature` | `v1=<hex_hmac_sha256>` — verify against raw body |
 
-**SSE frame format:**
+**SSE frame format** (stream requires the `x-elfa-api-key` header):
 
 ```
-event: query.triggered
-id: evt_01J...
-data: {"version":"1.0","eventType":"query.triggered","eventId":"evt_01J...","queryId":"q_123",...}
+id: 12345
+event: notification:new
+data: {"id":12345,"type":"athena_query_notify_only","category":"alerts","title":"...","body":"...","data":{"queryId":"q_123"},"priority":"high","createdAt":"2026-04-01T12:00:00.000Z"}
 ```
+
+The SSE `id:` line is the **numeric notification ID** (not the query ID); the query UUID
+lives in `data.queryId`.
 
 **Telegram relay job format** (when transforming webhook → Telegram Bot API):
 
@@ -1428,7 +1467,8 @@ issue, not a capability gap. Iterate on Validate instead of abandoning the query
 
 | Error signal | What it means | Next action |
 |---|---|---|
-| `EQL_MISSING_ARG` | A required arg is absent (e.g. `period` on `ema`/`sma`) | Add the missing arg from the TA Args Contract, re-validate |
+| `EQL_MISSING_ARG` | A required arg is absent (e.g. `period` on `ema`/`sma`, or `exchange` on any `price`/`ta` condition) | Add the missing arg from the TA Args Contract, re-validate |
+| Missing/invalid `exchange` on `price`/`ta` | Every `price`/`ta` condition needs `exchange` | Add `exchange` (`hyperliquid` or `gmx`) to the condition `args`, re-validate |
 | `EQL_INVALID_ARG` / type errors | Wrong type (`"14"` instead of `14`) or unrecognized key (`length` vs `period`) | Use exact key names + JSON numeric types |
 | Unknown `method` | Indicator name not supported | Pick nearest supported method; ask Builder Chat to substitute |
 | Unsupported `timeframe` / `period` | Value outside enum | Snap to nearest allowed value |
@@ -1481,11 +1521,68 @@ committing, or batch authoring flows.
 
 Drafts are API-key-mode only. Not available via x402.
 
+#### Symbols (tracking vs execution)
+
+Symbols are plain uppercase tickers for crypto majors and on-chain tokens
+(`BTC`, `ETH`, `SOL`, `HYPE`, long-tail tokens). **HIP-3 assets** (tokenized equities,
+commodities, FX/indices) use a provider-prefixed format `<provider>:<base_symbol>`:
+
+| Class | Examples |
+|---|---|
+| Crypto majors | `BTC`, `ETH`, `SOL`, `HYPE` |
+| On-chain / long-tail tokens | `RAVE`, `TAO`, niche memes |
+| Tokenized equities (HIP-3) | `xyz:TSLA`, `xyz:NVDA`, `vntl:SPACEX` |
+| Commodities (HIP-3) | `xyz:WTIOIL`, `flx:OIL`, `flx:GOLD` |
+| FX / indices (HIP-3) | `xyz:EURUSD`, `flx:USA500` |
+
+**Tracking vs execution differ:**
+- **Tracking** (conditions, alerts, webhooks) covers DEX/on-chain assets — effectively
+  unbounded (long-tail tokens, pre-CEX-listing assets, niche memes).
+- **Execution** (`market_order` / `limit_order`) is limited to symbols tradable as perps on
+  the target venue. Tradability varies by exchange — a symbol may be tradable on
+  `hyperliquid`, `gmx`, both, or neither. Pre-flight with
+  `GET /v2/auto/validate-tradable-symbol/{symbol}`. Non-tradable symbols still work for tracking.
+
+Full reference: [Symbols](https://docs.elfa.ai/auto/symbols).
+
+#### Trade execution (`market_order` / `limit_order`)
+
+Live trade actions execute on a connected perp venue. **Two venues are supported:
+`hyperliquid` and `gmx`.** (The `exchange` arg on a `price`/`ta` *condition* is separate —
+it only selects market-data source, not where orders execute.)
+
+**Order params:**
+
+| Param | Required | Notes |
+|---|---|---|
+| `exchange` | yes | `hyperliquid` or `gmx` (no default) |
+| `symbol` | yes | e.g. `BTC`, `ETH`, `SOL` — must be tradable on the venue |
+| `side` | yes | `buy` or `sell` |
+| `amount` XOR `size` | yes (exactly one) | `amount` = USD/USDC notional; `size` = contracts/units |
+| `price` | limit only | absolute limit price (string) |
+| `reduceOnly` | no | default `false`; **Hyperliquid only** (rejected on GMX) |
+| `leverage` | no | integer ≥ 1 |
+| `marginType` | no | `cross` or `isolated`; **Hyperliquid only** (rejected on GMX) |
+| `tp` | no | take-profit, `"5%"` or absolute `"50000"` |
+| `sl` | no | stop-loss, `"2%"` or absolute `"48000"` |
+
+**Venue differences:**
+
+| Feature | Hyperliquid | GMX |
+|---|---|---|
+| Minimum `amount` | 10 USDC | none |
+| `reduceOnly` | supported | rejected |
+| `marginType` | supported | rejected |
+
+Trade fees: Elfa charges **0.05% per trade**; the venue's own fees also apply (e.g.
+Hyperliquid base fee scales with 14-day volume). When reading account state, use the
+**master account address**, not the agent wallet address.
+
 #### Exchange connections
 
-Required only if you want to use **live trade-execution actions** (beyond `webhook`,
-`notify`, `telegram_bot`, `llm`). Connects your CEX account to Auto so triggered queries can
-place orders on your behalf.
+Required only for **live trade-execution actions** (beyond `webhook`, `notify`,
+`telegram_bot`, `llm`). Connects your venue account to Auto so triggered queries can place
+orders on your behalf.
 
 | Endpoint | Method | Auth | Description |
 |---|---|---|---|
@@ -1493,8 +1590,14 @@ place orders on your behalf.
 | `/v2/auto/exchanges` | GET | API key | List connected exchanges |
 | `/v2/auto/exchanges/:exchange` | DELETE | HMAC | Disconnect |
 
+**Trade-ready onboarding** (one-time): enable Auto in the dev portal (Privy link + HMAC
+secret) → complete venue onboarding (Hyperliquid and/or GMX) in the Elfa app → return to the
+portal and click **Verify connection**. Then `GET /v2/auto/exchanges` must show the target
+venue active, or trade actions fail at execution time with `AGENT_WALLET_REQUIRED`.
+
 Exchange connections are API-key-mode only. Not available via x402. Trade execution is not
-available via x402 at all.
+available via x402 at all. Full reference:
+[Trading Execution](https://docs.elfa.ai/auto/trading-execution).
 
 #### Executions
 
