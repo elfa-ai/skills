@@ -21,6 +21,18 @@ continuously and fires actions when conditions are met.
 
 Full documentation: [docs.elfa.ai](https://docs.elfa.ai)
 
+> **Staying current — check weekly.** This skill is updated on a **weekly** cadence to track
+> Elfa API and Auto changes. Before relying on it, check whether your copy may be stale: if it
+> has been **more than 7 days** since this skill was last fetched/installed (or you are unsure),
+> re-fetch the latest version before acting —
+> - **Skill package & changelog:** <https://go.elfa.ai/claude-skills> (and the
+>   [`elfa-ai/skills`](https://github.com/elfa-ai/skills) repo).
+> - **Live source of truth:** [docs.elfa.ai](https://docs.elfa.ai) — when this skill and the
+>   docs disagree, the docs win; prefer the docs and flag the mismatch to the user.
+>
+> When in doubt about a specific endpoint, parameter, or price, verify against
+> [docs.elfa.ai](https://docs.elfa.ai) at call time rather than trusting a possibly-stale copy.
+
 ## Environment and credentials
 
 Elfa supports API-key auth and x402 keyless payments. API keys are optional when using x402.
@@ -153,7 +165,7 @@ _Other:_
 
 | Endpoint | Method | Description | Auth |
 |---|---|---|---|
-| `/v2/auto/validate-tradable-symbol/:symbol` | GET | Check whether a symbol is tradable as a perp on a supported venue (Hyperliquid / GMX) — pre-flight for trade actions | API key |
+| `/v2/auto/validate-symbol/:exchange/:symbol` | GET | Check whether a symbol is supported on a venue (`exchange` = `hyperliquid` / `gmx`) — pre-flight for trade actions **and for `price`/`ta` data sources** | API key |
 
 **x402 mode (`/x402/v2/auto/*`)** — note: some routes use POST instead of GET:
 
@@ -562,7 +574,7 @@ existing queries/sessions may become inaccessible.
 | `GET /v2/auto/queries/*` (list, poll, stream, sessions) | Free | |
 | `POST /v2/auto/queries/:queryId/cancel` (Cancel active query) | Free | |
 | `DELETE /v2/auto/queries/:queryId` (Delete terminal query) | Free | |
-| `GET /v2/auto/validate-tradable-symbol/:symbol` | Free | |
+| `GET /v2/auto/validate-symbol/:exchange/:symbol` | Free | |
 
 > Reference USD values for Create: baseline `$0.045`, fast call `+$0.045`, expert call `+$0.162`. Use `/queries/validate` to preview exact cost before committing.
 
@@ -834,7 +846,7 @@ A query contains `conditions`, `actions`, and `expiresIn`:
 | `notify` | `message` (1–1000 chars) | — |
 | `webhook` | `url` (https only, allowlisted host) | `allNotifications` (default `false`) |
 | `telegram_bot` | `botToken`, `chatId` | `allNotifications` (default `false`) |
-| `market_order` / `limit_order` | `exchange` (`hyperliquid` / `gmx`), `symbol`, `side` (`buy` / `sell`), and `size` XOR `amount` (+ `price` for limit) | `reduceOnly`, `leverage`, `marginType` (`cross` / `isolated`), `tp`, `sl` |
+| `market_order` / `limit_order` | `exchange` (`hyperliquid` / `gmx`), `symbol`, `side` (`buy` / `sell`), and exactly one of `size` / `amount` / `positionSizePercent` (+ `price` for limit) | `reduceOnly`, `leverage`, `marginType` (`cross` / `isolated`), `tp`, `sl` |
 | `llm` | `objective` for standalone LLM work, or `action` + `callback.action` for chained follow-up | `action` ∈ `chat` / `summary` / `macro` / `accountAnalysis` / `tokenDiscovery` / `tokenAnalysis`; `speed` (`fast` / `expert`), per-action extras |
 
 `telegram_bot` does **not** take a `message` field — the message body is auto-composed from the query `title` + `description` + trigger context. Use `notify` (in-app push) when you want to specify the message text yourself. `allNotifications: true` on `webhook` / `telegram_bot` opts the destination into lifecycle notifications (failed/expired/run-failed) in addition to the trigger fire.
@@ -1193,7 +1205,7 @@ After a query triggers, Auto delivers events via one of three channels:
 |---|---|---|
 | **Webhook** | Production agent automation | `action.type = "webhook"` with signature verification + queue/worker |
 | **Telegram** | Fast human-readable alerts | `action.type = "telegram_bot"` with `params.botToken` + `params.chatId` (direct), or webhook→bot relay for custom formatting |
-| **SSE Stream** | Real-time event consumers | `GET /v2/auto/queries/{queryId}/stream` with `x-elfa-api-key` header |
+| **SSE Stream** | Real-time event consumers; **always available regardless of the chosen action** | `GET /v2/auto/queries/{queryId}/stream` using the **same auth as query creation** (`x-elfa-api-key` for API-key queries, the x402 secret for x402 queries) |
 
 **Query `title` and `description` in notifications:** both fields are embedded in every
 outbound notification (Telegram, webhook, SSE). Recipients often see an alert hours or days
@@ -1251,7 +1263,10 @@ convention**, not the wire format Auto sends (see the payload above):
 | `X-Auto-Signature-Timestamp` | Unix seconds for replay-window check |
 | `X-Auto-Signature` | `v1=<hex_hmac_sha256>` — verify against raw body |
 
-**SSE frame format** (stream requires the `x-elfa-api-key` header):
+**SSE frame format** (the stream uses the **same auth used to create the query** —
+`x-elfa-api-key` for API-key queries, or the x402 secret for x402 queries; it is *not*
+limited to `x-elfa-api-key`. For minimal setup, attach a `notify` action with a `message` —
+those notifications are retrievable only via SSE or poll):
 
 ```
 id: 12345
@@ -1541,7 +1556,9 @@ commodities, FX/indices) use a provider-prefixed format `<provider>:<base_symbol
 - **Execution** (`market_order` / `limit_order`) is limited to symbols tradable as perps on
   the target venue. Tradability varies by exchange — a symbol may be tradable on
   `hyperliquid`, `gmx`, both, or neither. Pre-flight with
-  `GET /v2/auto/validate-tradable-symbol/{symbol}`. Non-tradable symbols still work for tracking.
+  `GET /v2/auto/validate-symbol/{exchange}/{symbol}` (`exchange` = `hyperliquid` or `gmx`).
+  The same check also validates symbols for `price`/`ta` data sources, not just execution.
+  Non-tradable symbols still work for tracking.
 
 Full reference: [Symbols](https://docs.elfa.ai/auto/symbols).
 
@@ -1558,13 +1575,17 @@ it only selects market-data source, not where orders execute.)
 | `exchange` | yes | `hyperliquid` or `gmx` (no default) |
 | `symbol` | yes | e.g. `BTC`, `ETH`, `SOL` — must be tradable on the venue |
 | `side` | yes | `buy` or `sell` |
-| `amount` XOR `size` | yes (exactly one) | `amount` = USD/USDC notional; `size` = contracts/units |
+| `amount` / `size` / `positionSizePercent` | yes (exactly one) | `amount` = USD/USDC notional; `size` = contracts/units; `positionSizePercent` = % of account value, range `(0, 100]` |
 | `price` | limit only | absolute limit price (string) |
 | `reduceOnly` | no | default `false`; **Hyperliquid only** (rejected on GMX) |
 | `leverage` | no | integer ≥ 1 |
 | `marginType` | no | `cross` or `isolated`; **Hyperliquid only** (rejected on GMX) |
 | `tp` | no | take-profit, `"5%"` or absolute `"50000"` |
 | `sl` | no | stop-loss, `"2%"` or absolute `"48000"` |
+
+`positionSizePercent` resolves at execution as
+`accountValue × (positionSizePercent / 100) × effectiveLeverage`, converted to size via the
+order's reference price — mark price for `market_order`, limit price for `limit_order`.
 
 **Venue differences:**
 
@@ -1575,8 +1596,14 @@ it only selects market-data source, not where orders execute.)
 | `marginType` | supported | rejected |
 
 Trade fees: Elfa charges **0.05% per trade**; the venue's own fees also apply (e.g.
-Hyperliquid base fee scales with 14-day volume). When reading account state, use the
-**master account address**, not the agent wallet address.
+Hyperliquid base fee scales with 14-day volume).
+
+**Reading account state:** Auto executes trades but does **not** proxy account-state reads
+(balance, leverage, positions, unrealized PnL) — read those from the venue directly. On
+**Hyperliquid**, use its [Info endpoint](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint)
+(a `POST /info` REST API) with the **master account address** (the address that owns the
+funds), not the agent wallet address. On **GMX**, read on-chain via the GMX Reader contract
+or the GMX subgraph — there is no REST `info` endpoint as on Hyperliquid.
 
 #### Exchange connections
 
