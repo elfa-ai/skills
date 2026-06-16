@@ -3529,9 +3529,9 @@
 				}
 			}
 		},
-		"/v2/auto/validate-tradable-symbol/{symbol}": {
+		"/v2/auto/validate-symbol/{exchange}/{symbol}": {
 			"get": {
-				"operationId": "auto-validate-tradable-symbol-v2",
+				"operationId": "auto-validate-symbol-v2",
 				"responses": {
 					"200": {
 						"description": "Ok",
@@ -3547,6 +3547,16 @@
 											"supported": "true"
 										}
 									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Unsupported exchange",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyAutoErrorResponse"
 								}
 							}
 						}
@@ -3572,8 +3582,8 @@
 						}
 					}
 				},
-				"description": "Check whether a symbol is tradable as a Hyperliquid perpetual.\n\nUse this before submitting an EQL query whose action is `market_order` or\n`limit_order` (or an `llm` callback to either) — those actions only execute\non perps, and the scheduler rejects symbols not present in Hyperliquid's\nperp universe. Spot-only tokens (e.g. `HFUN`) return `\"false\"` here even\nthough they may still be queryable in price/sentiment conditions.\n\n### Cost\n\nFree.\n\n### Auth\n\nRequired header:\n```http\nx-elfa-api-key: <api_key>\n```\n\nHMAC signing is not required for this check.\n\n### Response Example (200)\n\n```json\n{\n  \"supported\": \"true\"\n}\n```",
-				"summary": "Validate Tradable Symbol",
+				"description": "Check whether a symbol is tradable as a perpetual on the given exchange.\n\nUse this before submitting an EQL query whose action is `market_order` or\n`limit_order` (or an `llm` callback to either) — those actions only execute\non perps, and the scheduler rejects symbols not present in the exchange's\nperp universe. Spot-only tokens (e.g. `HFUN`) return `\"false\"` here even\nthough they may still be queryable in price/sentiment conditions.\n\n### Cost\n\nFree.\n\n### Auth\n\nRequired header:\n```http\nx-elfa-api-key: <api_key>\n```\n\nHMAC signing is not required for this check.\n\n### Response Example (200)\n\n```json\n{\n  \"supported\": \"true\"\n}\n```",
+				"summary": "Validate Symbol",
 				"tags": [
 					"v2 Auto"
 				],
@@ -3584,6 +3594,20 @@
 				],
 				"parameters": [
 					{
+						"description": "Exchange to check support on: `hyperliquid` or `gmx`.",
+						"in": "path",
+						"name": "exchange",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"enum": [
+								"hyperliquid",
+								"gmx"
+							]
+						}
+					},
+					{
+						"description": "Trading symbol to check (e.g. `BTC`).",
 						"in": "path",
 						"name": "symbol",
 						"required": true,
