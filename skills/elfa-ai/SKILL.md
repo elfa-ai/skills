@@ -353,8 +353,9 @@ console.log(data.data.message);
 ### Step 3: Auto — Condition Engine and Trigger Pipeline
 
 Auto is a managed **condition engine + trigger pipeline** for agents. You describe what to
-watch for (price, technical indicators, LLM-evaluated conditions, scheduled checks), and
-Auto evaluates continuously and fires actions when conditions resolve to true.
+watch for (price, technical indicators, LLM-evaluated conditions, scheduled checks,
+prediction-market activity), and Auto evaluates continuously and fires actions when
+conditions resolve to true.
 
 Full Auto docs: [docs.elfa.ai/auto/overview](https://docs.elfa.ai/auto/overview)
 
@@ -382,9 +383,10 @@ Pick the condition source by user intent **before** writing condition args:
 |---|---|---|
 | Account-anchored post intent (`@user posts ...`) | `source: "tweet"` | `args.username` (no `@`), `args.text`, `args.minConfidence` (use `80` if user gives no threshold) |
 | World event intent (ETF approval, exploit, sanctions, etc.) | `source: "news"` | `args.text`, `args.minConfidence` (use `80` if user gives no threshold) |
+| Prediction-market move/lifecycle on a named open market | `source: "kalshi"` | `method` (e.g. `yes_price`, `status`, `result`), `args.ticker` (a currently-open Kalshi market), `operator`/`value` per the per-method allowlists |
 | Fuzzy world-state predicate not naturally expressible as a post or event | `source: "llm"` | `method: "athena_condition"`, `args.query`, `args.period` (`>= 1h`) |
 
-When the prompt is account-anchored, **start with `tweet`** — do not route to `news` or `llm` first. When the prompt is event-anchored without a specific account, start with `news`. Use `llm` (`athena_condition`) only when the predicate cannot reasonably be matched against a post or event.
+When the prompt is account-anchored, **start with `tweet`** — do not route to `news` or `llm` first. When the prompt is event-anchored without a specific account, start with `news`. When the trigger maps to a concrete prediction market you can name by ticker, use `kalshi` (prefer it over `llm` for supported Kalshi methods). Use `llm` (`athena_condition`) only when the predicate cannot reasonably be matched against a post, event, or open Kalshi market.
 
 #### When to suggest Auto
 
@@ -397,6 +399,7 @@ When the prompt is account-anchored, **start with `tweet`** — do not route to 
 - User wants **LLM analysis on trigger** ("when it triggers, run a full analysis")
 - User wants **account-anchored social triggers** ("notify me when @cz_binance posts that Binance Alpha is listing a new token") — use **Signal: X/Twitter Post** (`source: "tweet"`)
 - User wants **event-driven triggers** ("alert me when SEC approves a spot ETH ETF") — use **Signal: Event** (`source: "news"`)
+- User wants **prediction-market triggers** ("alert when this Kalshi market's YES probability crosses 60%", "notify when the market settles YES") — use **Prediction Markets** (`source: "kalshi"`)
 
 #### Auto access models
 
@@ -741,17 +744,19 @@ Build an Auto query:
 - expires in 24h
 ```
 
-_4) Prediction-market thesis watcher:_
+_4) Prediction-market thesis watcher (Kalshi):_
 
 ```
 Build an Auto query:
-- title + description: name the thesis basket and state the catalyst you're watching for
-- monitor tokens in my prediction-market thesis basket
-- trigger on rapid momentum shift with volume confirmation
-- action: llm to produce catalyst hypothesis + invalidation level
+- title + description: name the market thesis and the move you're watching for
+- source: kalshi
+- ticker: <a confirmed-open Kalshi market ticker, e.g. KXBTC-26APR0803-T77799.99>
+- trigger when the YES implied probability crosses above 0.6
+- action: llm to produce a catalyst hypothesis + invalidation level
 - deliver to webhook: https://your-runner.example/auto/events
 - include decision priority: high/medium/low
 - expires in 2d
+If the ticker is not open or anything is unsupported, return the closest supported query and list substitutions.
 ```
 
 _5) Portfolio risk guardrail:_
@@ -997,6 +1002,67 @@ Additional constraints:
 
 **Signal sources are event-driven**, not schedule-driven — they evaluate when relevant mention events arrive, not on a polling interval. They can still be combined with other condition types via `AND`/`OR`.
 
+**Prediction Markets source (`kalshi`):**
+
+Trigger on Kalshi prediction-market activity — live trade prints and market lifecycle. Each
+`kalshi` condition takes exactly one arg, `ticker`: a full open Kalshi market ticker
+(e.g. `KXBTC-26APR0803-T77799.99` = series + event + strike). Prefer `kalshi` over `llm` when
+the trigger is a supported Kalshi method, and over `price`/`ta` when you care about an event's
+*implied probability* rather than an asset's spot price.
+
+_Trade-backed methods_ — evaluate on the latest executed trade print:
+
+| Method | Returns | Description |
+|---|---|---|
+| `yes_price` | number `0`–`1` | Executed YES price = live implied probability of YES |
+| `no_price` | number `0`–`1` | Executed NO price (implied probability of NO) |
+| `trade_size` | number ≥ 0 | Contracts on that print |
+| `taker_outcome_side` | enum `yes` / `no` | Which outcome the aggressor (taker) positioned for |
+| `taker_book_side` | enum `bid` / `ask` | `bid` = YES-side pressure, `ask` = NO-side pressure |
+| `is_block_trade` | boolean | `true` for large off-book negotiated block trades |
+
+_Market-backed methods_ — evaluate on market lifecycle updates:
+
+| Method | Returns | Description |
+|---|---|---|
+| `status` | enum `active` / `closed` / `determined` / `settled` / `finalized` | Lifecycle state (`active` = only tradeable state) |
+| `result` | enum `yes` / `no` | Settlement outcome (empty until the market resolves) |
+| `settlement_value` | number ≥ 0 | Final settlement value in dollars (populated on settlement) |
+
+**Operators by method** (restricted per method):
+
+| Method(s) | Allowed operators |
+|---|---|
+| `yes_price`, `no_price` | `>` `<` `>=` `<=` `==` `!=` `crosses_above` `crosses_below` |
+| `trade_size`, `settlement_value` | `>` `<` `>=` `<=` `==` `!=` |
+| `taker_outcome_side`, `taker_book_side`, `status`, `result`, `is_block_trade` | `==` `!=` |
+
+Only the price methods (`yes_price` / `no_price`) support the transition operators
+`crosses_above` / `crosses_below`; enum and boolean methods are equality-only. `value` must be
+a **literal** matching the method's type (no dynamic field-vs-field values), and
+`is_block_trade` takes a JSON boolean `true` / `false` (not the strings `"true"` / `"false"`).
+
+**Open markets only:** at create/validate time `args.ticker` is checked against the catalog of
+**currently-open** Kalshi markets. A `closed` / `determined` / `settled` / `finalized` ticker
+is rejected with `EQL_INVALID_ARG_VALUE` ("was not found or is not open"). Resolve a real,
+currently-open ticker first — never invent or guess tickers. Lifecycle conditions are still
+useful on a market you already watch: a plan created while a market is `active` can fire as it
+later moves to `settled` (`status`) or resolves (`result` / `settlement_value`) within its
+`expiresIn` window.
+
+```json
+{
+  "source": "kalshi",
+  "method": "yes_price",
+  "args": { "ticker": "KXBTC-26APR0803-T77799.99" },
+  "operator": "crosses_below",
+  "value": 0.4
+}
+```
+
+Full method tables, value enums, and example automations:
+[Prediction Markets](https://docs.elfa.ai/auto/prediction-markets).
+
 **Supported operators:** `>`, `<`, `>=`, `<=`, `==`, `!=`, `crosses_above`, `crosses_below`
 
 **Dynamic comparisons:** `value` can reference another live data source instead of a literal:
@@ -1164,6 +1230,30 @@ Additional constraints:
   },
   "actions": [{ "stepId": "step_1", "type": "notify", "params": { "message": "Event trigger fired: spot ETH ETF approval signal" } }],
   "expiresIn": "24h"
+}
+```
+
+**10) Prediction Market — Kalshi (YES probability crossing):**
+
+```json
+{
+  "title": "Kalshi YES crosses 60%",
+  "description": "Fire when the market's implied YES probability crosses up through 60%, signalling the market now expects this outcome.",
+  "conditions": { "AND": [{ "source": "kalshi", "method": "yes_price", "args": { "ticker": "KXBTC-26APR0803-T77799.99" }, "operator": "crosses_above", "value": 0.6 }] },
+  "actions": [{ "stepId": "step_1", "type": "webhook", "params": { "url": "https://your-runner.example/auto/events" } }],
+  "expiresIn": "48h"
+}
+```
+
+**11) Prediction Market — Kalshi (settlement recap via LLM):**
+
+```json
+{
+  "title": "Kalshi market resolved YES — recap",
+  "description": "When the market settles with a YES result, generate a concise recap of what happened and why.",
+  "conditions": { "AND": [{ "source": "kalshi", "method": "result", "args": { "ticker": "KXBTC-26APR0803-T77799.99" }, "operator": "==", "value": "yes" }] },
+  "actions": [{ "stepId": "step_1", "type": "llm", "params": { "objective": "This Kalshi market just resolved YES. Write a concise recap explaining what resolved and what to watch next." } }],
+  "expiresIn": "48h"
 }
 ```
 
@@ -1494,6 +1584,9 @@ issue, not a capability gap. Iterate on Validate instead of abandoning the query
 | `cron` / `llm` period too short | Below 1h minimum | Raise to `1h` or higher |
 | Unmonitored `tweet` username | `tweet.semantic` `args.username` not in monitored active accounts | Replace with a monitored active handle (without `@`) and re-validate |
 | Invalid `minConfidence` (`tweet` / `news`) | Non-integer or outside `0..100` | Use a JSON integer between `0` and `100` (start with `80`) |
+| `kalshi` ticker not open (`EQL_INVALID_ARG_VALUE` on `args.ticker`) | Ticker is not a currently-open Kalshi market (closed/settled/unknown) | Resolve a currently-open full ticker and re-validate; don't guess tickers |
+| `kalshi` invalid enum / operator | Enum `value` outside its set, or operator not in the method's allowlist (e.g. `crosses_above` on `trade_size`) | Use the per-method operator allowlists and enum sets from the `kalshi` source reference |
+| `kalshi` `is_block_trade` type error | `value` passed as a string instead of a JSON boolean | Use JSON `true` / `false`, not `"true"` / `"false"` |
 | Dynamic value in action params | Dynamic values only allowed in condition `value` | Move dynamic reference into condition; keep action params literal |
 
 Cross-operator semantics: `crosses_above` = previous `<` threshold AND current `>=` threshold.
