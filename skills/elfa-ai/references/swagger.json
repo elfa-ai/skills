@@ -1552,24 +1552,6 @@
 				"type": "object",
 				"additionalProperties": {}
 			},
-			"ApiKeyPreviewQueryResponse": {
-				"properties": {},
-				"type": "object",
-				"additionalProperties": {}
-			},
-			"ApiKeyPreviewQueryRequestBody": {
-				"properties": {
-					"query": {
-						"$ref": "#/components/schemas/JsonObject",
-						"description": "EQL query to preview"
-					}
-				},
-				"required": [
-					"query"
-				],
-				"type": "object",
-				"additionalProperties": false
-			},
 			"ApiKeyListQueryDraftsResponse": {
 				"properties": {},
 				"type": "object",
@@ -1619,7 +1601,7 @@
 				"type": "object",
 				"additionalProperties": {}
 			},
-			"ApiKeyPreviewQueryDraftResponse": {
+			"ApiKeyValidateQueryDraftResponse": {
 				"properties": {},
 				"type": "object",
 				"additionalProperties": {}
@@ -4392,106 +4374,6 @@
 				]
 			}
 		},
-		"/v2/auto/queries/preview": {
-			"post": {
-				"operationId": "auto-preview-query-v2",
-				"responses": {
-					"200": {
-						"description": "Ok",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ApiKeyPreviewQueryResponse"
-								},
-								"examples": {
-									"success": {
-										"summary": "Example successful response",
-										"value": {
-											"key": {}
-										}
-									}
-								}
-							}
-						}
-					},
-					"400": {
-						"description": "Missing or invalid parameters",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ApiKeyAutoErrorResponse"
-								}
-							}
-						}
-					},
-					"401": {
-						"description": "Missing or invalid API key",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ApiKeyAutoErrorResponse"
-								}
-							}
-						}
-					}
-				},
-				"description": "Preview a query without creating it.",
-				"summary": "Preview Query",
-				"tags": [
-					"v2 Auto"
-				],
-				"security": [
-					{
-						"api_key": []
-					}
-				],
-				"parameters": [],
-				"requestBody": {
-					"required": true,
-					"content": {
-						"application/json": {
-							"schema": {
-								"$ref": "#/components/schemas/ApiKeyPreviewQueryRequestBody"
-							},
-							"examples": {
-								"default": {
-									"summary": "Example request",
-									"value": {
-										"query": {
-											"conditions": {
-												"AND": [
-													{
-														"source": "ta",
-														"method": "rsi",
-														"args": {
-															"symbol": "BTC",
-															"timeframe": "1h",
-															"period": 14
-														},
-														"operator": "<",
-														"value": 30
-													}
-												]
-											},
-											"actions": [
-												{
-													"stepId": "step_1",
-													"type": "notify",
-													"params": {
-														"message": "BTC RSI oversold"
-													}
-												}
-											],
-											"expiresIn": "24h"
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-		},
 		"/v2/auto/queries/drafts": {
 			"get": {
 				"operationId": "auto-list-query-drafts-v2",
@@ -4800,16 +4682,16 @@
 				]
 			}
 		},
-		"/v2/auto/queries/drafts/{draftId}/preview": {
+		"/v2/auto/queries/drafts/{draftId}/validate": {
 			"post": {
-				"operationId": "auto-preview-query-draft-v2",
+				"operationId": "auto-validate-query-draft-v2",
 				"responses": {
 					"200": {
 						"description": "Ok",
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ApiKeyPreviewQueryDraftResponse"
+									"$ref": "#/components/schemas/ApiKeyValidateQueryDraftResponse"
 								},
 								"examples": {
 									"success": {
@@ -4843,8 +4725,8 @@
 						}
 					}
 				},
-				"description": "Preview a stored query draft.",
-				"summary": "Preview Query Draft",
+				"description": "Validate a stored query draft.",
+				"summary": "Validate Query Draft",
 				"tags": [
 					"v2 Auto"
 				],

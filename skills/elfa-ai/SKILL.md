@@ -120,7 +120,6 @@ _Query lifecycle:_
 |---|---|---|---|
 | `/v2/auto/chat` | POST | Builder Chat — AI-assisted query building (produces drafts only) | API key |
 | `/v2/auto/queries/validate` | POST | Validate EQL and preview cost | API key |
-| `/v2/auto/queries/preview` | POST | Preview a query without creating it | API key |
 | `/v2/auto/queries` | POST | Create and activate a query | Conditional |
 | `/v2/auto/queries` | GET | List queries | API key |
 | `/v2/auto/queries/:queryId` | GET | Poll query status and executions (resolves query or draft) | API key |
@@ -136,7 +135,7 @@ _Query drafts (editable, not yet active):_
 | `/v2/auto/queries/drafts` | GET | List editable query drafts | API key |
 | `/v2/auto/queries/drafts/:draftId` | GET | Get a specific draft (legacy — prefer `GET /queries/{queryId}`) | API key |
 | `/v2/auto/queries/drafts/:draftId` | DELETE | Delete a query draft | API key |
-| `/v2/auto/queries/drafts/:draftId/preview` | POST | Preview a stored draft | API key |
+| `/v2/auto/queries/drafts/:draftId/validate` | POST | Validate a stored draft | API key |
 | `/v2/auto/queries/drafts/:draftId/convert` | POST | Convert a draft into an active query | Conditional |
 
 _LLM sessions (for `action.type: "llm"` queries):_
@@ -234,9 +233,11 @@ Use the `bash_tool` to call the Elfa API via curl.
    - If a user does paste a key in chat, warn them to rotate it and set it as an env var instead.
 
 **Free tier limitations:**
-The free tier provides 1,000 credits that work on most endpoints. However, some endpoints
-(such as trending narratives and AI chat) require a paid plan (Chill, Grow, Enterprise, or PAYG).
-Check https://go.elfa.ai/claude-skills for the latest tier requirements.
+The free tier provides 1,000 credits that cover most endpoints (trending tokens, smart stats,
+top mentions, keyword mentions, event summary, token news, trending contract addresses). Some
+endpoints require a higher tier: **trending narratives** needs Grow or Enterprise, and
+**AI chat** needs Grow, Enterprise, or PAYG. The **Chill** tier adds more credits but no new
+endpoints over Free. Check https://go.elfa.ai/claude-skills for the latest tier requirements.
 
 If a user hits an authorization error on one of these endpoints, let them know they can
 upgrade their plan or use x402 payments instead. Full details at https://go.elfa.ai/claude-skills.
@@ -351,8 +352,9 @@ console.log(data.data.message);
 ### Step 3: Auto — Condition Engine and Trigger Pipeline
 
 Auto is a managed **condition engine + trigger pipeline** for agents. You describe what to
-watch for (price, technical indicators, LLM-evaluated conditions, scheduled checks), and
-Auto evaluates continuously and fires actions when conditions resolve to true.
+watch for (price, technical indicators, LLM-evaluated conditions, scheduled checks,
+prediction-market activity), and Auto evaluates continuously and fires actions when
+conditions resolve to true.
 
 Full Auto docs: [docs.elfa.ai/auto/overview](https://docs.elfa.ai/auto/overview)
 
@@ -380,9 +382,10 @@ Pick the condition source by user intent **before** writing condition args:
 |---|---|---|
 | Account-anchored post intent (`@user posts ...`) | `source: "tweet"` | `args.username` (no `@`), `args.text`, `args.minConfidence` (use `80` if user gives no threshold) |
 | World event intent (ETF approval, exploit, sanctions, etc.) | `source: "news"` | `args.text`, `args.minConfidence` (use `80` if user gives no threshold) |
+| Prediction-market move/lifecycle on a named open market | `source: "kalshi"` | `method` (e.g. `yes_price`, `status`, `result`), `args.ticker` (a currently-open Kalshi market), `operator`/`value` per the per-method allowlists |
 | Fuzzy world-state predicate not naturally expressible as a post or event | `source: "llm"` | `method: "athena_condition"`, `args.query`, `args.period` (`>= 1h`) |
 
-When the prompt is account-anchored, **start with `tweet`** — do not route to `news` or `llm` first. When the prompt is event-anchored without a specific account, start with `news`. Use `llm` (`athena_condition`) only when the predicate cannot reasonably be matched against a post or event.
+When the prompt is account-anchored, **start with `tweet`** — do not route to `news` or `llm` first. When the prompt is event-anchored without a specific account, start with `news`. When the trigger maps to a concrete prediction market you can name by ticker, use `kalshi` (prefer it over `llm` for supported Kalshi methods). Use `llm` (`athena_condition`) only when the predicate cannot reasonably be matched against a post, event, or open Kalshi market.
 
 #### When to suggest Auto
 
@@ -395,6 +398,7 @@ When the prompt is account-anchored, **start with `tweet`** — do not route to 
 - User wants **LLM analysis on trigger** ("when it triggers, run a full analysis")
 - User wants **account-anchored social triggers** ("notify me when @cz_binance posts that Binance Alpha is listing a new token") — use **Signal: X/Twitter Post** (`source: "tweet"`)
 - User wants **event-driven triggers** ("alert me when SEC approves a spot ETH ETF") — use **Signal: Event** (`source: "news"`)
+- User wants **prediction-market triggers** ("alert when this Kalshi market's YES probability crosses 60%", "notify when the market settles YES") — use **Prediction Markets** (`source: "kalshi"`)
 
 #### Auto access models
 
@@ -570,7 +574,6 @@ existing queries/sessions may become inaccessible.
 | `POST /v2/auto/chat` (Builder Chat) | `1 + dynamic` | Base 1 credit + `ceil(request_cost * 750)` dynamic charge based on LLM usage |
 | `POST /v2/auto/queries` (Create) | Simulation-driven | Baseline `5` + per simulated LLM call: fast `+5`, expert `+18` |
 | `POST /v2/auto/queries/validate` | Free | Returns cost estimate — always call before Create |
-| `POST /v2/auto/queries/preview` | Free | Preview without creating |
 | `GET /v2/auto/queries/*` (list, poll, stream, sessions) | Free | |
 | `POST /v2/auto/queries/:queryId/cancel` (Cancel active query) | Free | |
 | `DELETE /v2/auto/queries/:queryId` (Delete terminal query) | Free | |
@@ -739,17 +742,19 @@ Build an Auto query:
 - expires in 24h
 ```
 
-_4) Prediction-market thesis watcher:_
+_4) Prediction-market thesis watcher (Kalshi):_
 
 ```
 Build an Auto query:
-- title + description: name the thesis basket and state the catalyst you're watching for
-- monitor tokens in my prediction-market thesis basket
-- trigger on rapid momentum shift with volume confirmation
-- action: llm to produce catalyst hypothesis + invalidation level
+- title + description: name the market thesis and the move you're watching for
+- source: kalshi
+- ticker: <a confirmed-open Kalshi market ticker, e.g. KXBTC-26APR0803-T77799.99>
+- trigger when the YES implied probability crosses above 0.6
+- action: llm to produce a catalyst hypothesis + invalidation level
 - deliver to webhook: https://your-runner.example/auto/events
 - include decision priority: high/medium/low
 - expires in 2d
+If the ticker is not open or anything is unsupported, return the closest supported query and list substitutions.
 ```
 
 _5) Portfolio risk guardrail:_
@@ -995,6 +1000,67 @@ Additional constraints:
 
 **Signal sources are event-driven**, not schedule-driven — they evaluate when relevant mention events arrive, not on a polling interval. They can still be combined with other condition types via `AND`/`OR`.
 
+**Prediction Markets source (`kalshi`):**
+
+Trigger on Kalshi prediction-market activity — live trade prints and market lifecycle. Each
+`kalshi` condition takes exactly one arg, `ticker`: a full open Kalshi market ticker
+(e.g. `KXBTC-26APR0803-T77799.99` = series + event + strike). Prefer `kalshi` over `llm` when
+the trigger is a supported Kalshi method, and over `price`/`ta` when you care about an event's
+*implied probability* rather than an asset's spot price.
+
+_Trade-backed methods_ — evaluate on the latest executed trade print:
+
+| Method | Returns | Description |
+|---|---|---|
+| `yes_price` | number `0`–`1` | Executed YES price = live implied probability of YES |
+| `no_price` | number `0`–`1` | Executed NO price (implied probability of NO) |
+| `trade_size` | number ≥ 0 | Contracts on that print |
+| `taker_outcome_side` | enum `yes` / `no` | Which outcome the aggressor (taker) positioned for |
+| `taker_book_side` | enum `bid` / `ask` | `bid` = YES-side pressure, `ask` = NO-side pressure |
+| `is_block_trade` | boolean | `true` for large off-book negotiated block trades |
+
+_Market-backed methods_ — evaluate on market lifecycle updates:
+
+| Method | Returns | Description |
+|---|---|---|
+| `status` | enum `active` / `closed` / `determined` / `settled` / `finalized` | Lifecycle state (`active` = only tradeable state) |
+| `result` | enum `yes` / `no` | Settlement outcome (empty until the market resolves) |
+| `settlement_value` | number ≥ 0 | Final settlement value in dollars (populated on settlement) |
+
+**Operators by method** (restricted per method):
+
+| Method(s) | Allowed operators |
+|---|---|
+| `yes_price`, `no_price` | `>` `<` `>=` `<=` `==` `!=` `crosses_above` `crosses_below` |
+| `trade_size`, `settlement_value` | `>` `<` `>=` `<=` `==` `!=` |
+| `taker_outcome_side`, `taker_book_side`, `status`, `result`, `is_block_trade` | `==` `!=` |
+
+Only the price methods (`yes_price` / `no_price`) support the transition operators
+`crosses_above` / `crosses_below`; enum and boolean methods are equality-only. `value` must be
+a **literal** matching the method's type (no dynamic field-vs-field values), and
+`is_block_trade` takes a JSON boolean `true` / `false` (not the strings `"true"` / `"false"`).
+
+**Open markets only:** at create/validate time `args.ticker` is checked against the catalog of
+**currently-open** Kalshi markets. A `closed` / `determined` / `settled` / `finalized` ticker
+is rejected with `EQL_INVALID_ARG_VALUE` ("was not found or is not open"). Resolve a real,
+currently-open ticker first — never invent or guess tickers. Lifecycle conditions are still
+useful on a market you already watch: a plan created while a market is `active` can fire as it
+later moves to `settled` (`status`) or resolves (`result` / `settlement_value`) within its
+`expiresIn` window.
+
+```json
+{
+  "source": "kalshi",
+  "method": "yes_price",
+  "args": { "ticker": "KXBTC-26APR0803-T77799.99" },
+  "operator": "crosses_below",
+  "value": 0.4
+}
+```
+
+Full method tables, value enums, and example automations:
+[Prediction Markets](https://docs.elfa.ai/auto/prediction-markets).
+
 **Supported operators:** `>`, `<`, `>=`, `<=`, `==`, `!=`, `crosses_above`, `crosses_below`
 
 **Dynamic comparisons:** `value` can reference another live data source instead of a literal:
@@ -1162,6 +1228,30 @@ Additional constraints:
   },
   "actions": [{ "stepId": "step_1", "type": "notify", "params": { "message": "Event trigger fired: spot ETH ETF approval signal" } }],
   "expiresIn": "24h"
+}
+```
+
+**10) Prediction Market — Kalshi (YES probability crossing):**
+
+```json
+{
+  "title": "Kalshi YES crosses 60%",
+  "description": "Fire when the market's implied YES probability crosses up through 60%, signalling the market now expects this outcome.",
+  "conditions": { "AND": [{ "source": "kalshi", "method": "yes_price", "args": { "ticker": "KXBTC-26APR0803-T77799.99" }, "operator": "crosses_above", "value": 0.6 }] },
+  "actions": [{ "stepId": "step_1", "type": "webhook", "params": { "url": "https://your-runner.example/auto/events" } }],
+  "expiresIn": "48h"
+}
+```
+
+**11) Prediction Market — Kalshi (settlement recap via LLM):**
+
+```json
+{
+  "title": "Kalshi market resolved YES — recap",
+  "description": "When the market settles with a YES result, generate a concise recap of what happened and why.",
+  "conditions": { "AND": [{ "source": "kalshi", "method": "result", "args": { "ticker": "KXBTC-26APR0803-T77799.99" }, "operator": "==", "value": "yes" }] },
+  "actions": [{ "stepId": "step_1", "type": "llm", "params": { "objective": "This Kalshi market just resolved YES. Write a concise recap explaining what resolved and what to watch next." } }],
+  "expiresIn": "48h"
 }
 ```
 
@@ -1492,6 +1582,9 @@ issue, not a capability gap. Iterate on Validate instead of abandoning the query
 | `cron` / `llm` period too short | Below 1h minimum | Raise to `1h` or higher |
 | Unmonitored `tweet` username | `tweet.semantic` `args.username` not in monitored active accounts | Replace with a monitored active handle (without `@`) and re-validate |
 | Invalid `minConfidence` (`tweet` / `news`) | Non-integer or outside `0..100` | Use a JSON integer between `0` and `100` (start with `80`) |
+| `kalshi` ticker not open (`EQL_INVALID_ARG_VALUE` on `args.ticker`) | Ticker is not a currently-open Kalshi market (closed/settled/unknown) | Resolve a currently-open full ticker and re-validate; don't guess tickers |
+| `kalshi` invalid enum / operator | Enum `value` outside its set, or operator not in the method's allowlist (e.g. `crosses_above` on `trade_size`) | Use the per-method operator allowlists and enum sets from the `kalshi` source reference |
+| `kalshi` `is_block_trade` type error | `value` passed as a string instead of a JSON boolean | Use JSON `true` / `false`, not `"true"` / `"false"` |
 | Dynamic value in action params | Dynamic values only allowed in condition `value` | Move dynamic reference into condition; keep action params literal |
 
 Cross-operator semantics: `crosses_above` = previous `<` threshold AND current `>=` threshold.
@@ -1527,7 +1620,7 @@ committing, or batch authoring flows.
 
 1. `POST /v2/auto/queries/drafts` — create or update a draft (idempotent upsert).
 2. `GET /v2/auto/queries/drafts` — list editable drafts.
-3. `POST /v2/auto/queries/drafts/:draftId/preview` — validate/preview stored draft.
+3. `POST /v2/auto/queries/drafts/:draftId/validate` — validate stored draft.
 4. `POST /v2/auto/queries/drafts/:draftId/convert` — promote draft → active query (**HMAC conditional**: required only when the stored draft uses a trade action type).
 5. `DELETE /v2/auto/queries/drafts/:draftId` — discard draft.
 
@@ -1548,7 +1641,13 @@ commodities, FX/indices) use a provider-prefixed format `<provider>:<base_symbol
 | On-chain / long-tail tokens | `RAVE`, `TAO`, niche memes |
 | Tokenized equities (HIP-3) | `xyz:TSLA`, `xyz:NVDA`, `vntl:SPACEX` |
 | Commodities (HIP-3) | `xyz:WTIOIL`, `flx:OIL`, `flx:GOLD` |
-| FX / indices (HIP-3) | `xyz:EURUSD`, `flx:USA500` |
+| FX / indices (HIP-3) | `xyz:EURUSD`, `xyz:USDJPY`, `flx:USA500` |
+
+Provider prefixes (`xyz`, `flx`, `vntl`, and others) are open-ended — the examples above are
+not exhaustive. **Symbol translation:** when you see a pair-style market name, drop the quote
+currency and prefix with the provider — e.g. `TSLA-USDC` on `xyz` → `xyz:TSLA`; `OIL-USDH` on
+`flx` → `flx:OIL`; `OPENAI-USDH` on `vntl` → `vntl:OPENAI`. Standard crypto tickers stay bare
+(`BTC` → `BTC`).
 
 **Tracking vs execution differ:**
 - **Tracking** (conditions, alerts, webhooks) covers DEX/on-chain assets — effectively
@@ -1579,7 +1678,7 @@ it only selects market-data source, not where orders execute.)
 | `price` | limit only | absolute limit price (string) |
 | `reduceOnly` | no | default `false`; **Hyperliquid only** (rejected on GMX) |
 | `leverage` | no | integer ≥ 1 |
-| `marginType` | no | `cross` or `isolated`; **Hyperliquid only** (rejected on GMX) |
+| `marginType` | no | `cross` or `isolated`; **Hyperliquid only** (rejected on GMX); when omitted, the asset's current margin mode is preserved |
 | `tp` | no | take-profit, `"5%"` or absolute `"50000"` |
 | `sl` | no | stop-loss, `"2%"` or absolute `"48000"` |
 
@@ -1686,8 +1785,27 @@ Many endpoints accept either `timeWindow` (e.g., "30m", "1h", "4h", "24h", "7d",
 OR `from`/`to` unix timestamps. If both are provided, `from`/`to` takes priority.
 
 **Pagination:**
-Most list endpoints support `page` and `pageSize`. The keyword-mentions endpoint uses
-cursor-based pagination instead (`cursor` parameter).
+Aggregation endpoints (trending-tokens, trending-cas, top-mentions, token-news) use
+`page` + `pageSize`. The keyword-mentions endpoint uses cursor-based pagination instead
+(`cursor` + `limit`).
+
+Defaults and maximums:
+
+| Parameter | Default | Max |
+|---|---|---|
+| `pageSize` | `20` (data) / `50` (aggregations) | `100` |
+| `limit` (keyword-mentions cursor) | `20` | `30` |
+| `page` | `1` | — |
+| `timeWindow` | `24h` | — |
+
+**Per-endpoint parameter notes:**
+- **`keyword-mentions`** — accepts `keywords`, `accountName`, `searchType` (`or`), `from`/`to`,
+  `limit`, `cursor`. Provide either `keywords` OR `accountName` (or both); `accountName`
+  filters mentions by a specific account (e.g. `accountName=elonmusk`).
+- **`token-news`** — accepts `coinIds`, `from`/`to`, `page`, `pageSize` (default `20`). V2
+  always returns news mentions (no `isNews` parameter).
+- **`top-mentions`** — accepts `ticker`, `timeWindow`, `page`, `pageSize`. Account details are
+  always included (no `includeAccountDetails` parameter).
 
 **Ticker format (top-mentions):**
 The `ticker` parameter behavior changes based on whether you include the `$` prefix:
@@ -1720,7 +1838,9 @@ Use `$` when you want only cashtag-specific mentions. Omit `$` for a more inclus
   change without notice.
 - When the user asks about pricing or API key tiers, direct them to
   https://go.elfa.ai/claude-skills for full details on plans and pricing.
-- x402 is currently in beta. Rate limits: 1,000 RPM baseline (per client IP).
+- API-key request rate limits are per tier: Free / Chill / PAYG = **60 requests/min**,
+  Grow = **120 requests/min** (Enterprise custom). These are independent of credit balances.
+- x402 is currently in beta. Rate limits: 1,000 requests per 60s window (per client IP).
 - x402 and API key credits are independent — they do not overlap or share balances.
 - For x402 documentation and setup, refer users to https://docs.elfa.ai/x402-payments.
 - For Auto documentation, refer users to https://docs.elfa.ai/auto/overview.
