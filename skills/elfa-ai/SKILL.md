@@ -120,7 +120,6 @@ _Query lifecycle:_
 |---|---|---|---|
 | `/v2/auto/chat` | POST | Builder Chat — AI-assisted query building (produces drafts only) | API key |
 | `/v2/auto/queries/validate` | POST | Validate EQL and preview cost | API key |
-| `/v2/auto/queries/preview` | POST | Preview a query without creating it | API key |
 | `/v2/auto/queries` | POST | Create and activate a query | Conditional |
 | `/v2/auto/queries` | GET | List queries | API key |
 | `/v2/auto/queries/:queryId` | GET | Poll query status and executions (resolves query or draft) | API key |
@@ -136,7 +135,7 @@ _Query drafts (editable, not yet active):_
 | `/v2/auto/queries/drafts` | GET | List editable query drafts | API key |
 | `/v2/auto/queries/drafts/:draftId` | GET | Get a specific draft (legacy — prefer `GET /queries/{queryId}`) | API key |
 | `/v2/auto/queries/drafts/:draftId` | DELETE | Delete a query draft | API key |
-| `/v2/auto/queries/drafts/:draftId/preview` | POST | Preview a stored draft | API key |
+| `/v2/auto/queries/drafts/:draftId/validate` | POST | Validate a stored draft | API key |
 | `/v2/auto/queries/drafts/:draftId/convert` | POST | Convert a draft into an active query | Conditional |
 
 _LLM sessions (for `action.type: "llm"` queries):_
@@ -575,7 +574,6 @@ existing queries/sessions may become inaccessible.
 | `POST /v2/auto/chat` (Builder Chat) | `1 + dynamic` | Base 1 credit + `ceil(request_cost * 750)` dynamic charge based on LLM usage |
 | `POST /v2/auto/queries` (Create) | Simulation-driven | Baseline `5` + per simulated LLM call: fast `+5`, expert `+18` |
 | `POST /v2/auto/queries/validate` | Free | Returns cost estimate — always call before Create |
-| `POST /v2/auto/queries/preview` | Free | Preview without creating |
 | `GET /v2/auto/queries/*` (list, poll, stream, sessions) | Free | |
 | `POST /v2/auto/queries/:queryId/cancel` (Cancel active query) | Free | |
 | `DELETE /v2/auto/queries/:queryId` (Delete terminal query) | Free | |
@@ -1622,7 +1620,7 @@ committing, or batch authoring flows.
 
 1. `POST /v2/auto/queries/drafts` — create or update a draft (idempotent upsert).
 2. `GET /v2/auto/queries/drafts` — list editable drafts.
-3. `POST /v2/auto/queries/drafts/:draftId/preview` — validate/preview stored draft.
+3. `POST /v2/auto/queries/drafts/:draftId/validate` — validate stored draft.
 4. `POST /v2/auto/queries/drafts/:draftId/convert` — promote draft → active query (**HMAC conditional**: required only when the stored draft uses a trade action type).
 5. `DELETE /v2/auto/queries/drafts/:draftId` — discard draft.
 
