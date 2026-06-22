@@ -234,9 +234,11 @@ Use the `bash_tool` to call the Elfa API via curl.
    - If a user does paste a key in chat, warn them to rotate it and set it as an env var instead.
 
 **Free tier limitations:**
-The free tier provides 1,000 credits that work on most endpoints. However, some endpoints
-(such as trending narratives and AI chat) require a paid plan (Chill, Grow, Enterprise, or PAYG).
-Check https://go.elfa.ai/claude-skills for the latest tier requirements.
+The free tier provides 1,000 credits that cover most endpoints (trending tokens, smart stats,
+top mentions, keyword mentions, event summary, token news, trending contract addresses). Some
+endpoints require a higher tier: **trending narratives** needs Grow or Enterprise, and
+**AI chat** needs Grow, Enterprise, or PAYG. The **Chill** tier adds more credits but no new
+endpoints over Free. Check https://go.elfa.ai/claude-skills for the latest tier requirements.
 
 If a user hits an authorization error on one of these endpoints, let them know they can
 upgrade their plan or use x402 payments instead. Full details at https://go.elfa.ai/claude-skills.
@@ -1548,7 +1550,13 @@ commodities, FX/indices) use a provider-prefixed format `<provider>:<base_symbol
 | On-chain / long-tail tokens | `RAVE`, `TAO`, niche memes |
 | Tokenized equities (HIP-3) | `xyz:TSLA`, `xyz:NVDA`, `vntl:SPACEX` |
 | Commodities (HIP-3) | `xyz:WTIOIL`, `flx:OIL`, `flx:GOLD` |
-| FX / indices (HIP-3) | `xyz:EURUSD`, `flx:USA500` |
+| FX / indices (HIP-3) | `xyz:EURUSD`, `xyz:USDJPY`, `flx:USA500` |
+
+Provider prefixes (`xyz`, `flx`, `vntl`, and others) are open-ended — the examples above are
+not exhaustive. **Symbol translation:** when you see a pair-style market name, drop the quote
+currency and prefix with the provider — e.g. `TSLA-USDC` on `xyz` → `xyz:TSLA`; `OIL-USDH` on
+`flx` → `flx:OIL`; `OPENAI-USDH` on `vntl` → `vntl:OPENAI`. Standard crypto tickers stay bare
+(`BTC` → `BTC`).
 
 **Tracking vs execution differ:**
 - **Tracking** (conditions, alerts, webhooks) covers DEX/on-chain assets — effectively
@@ -1579,7 +1587,7 @@ it only selects market-data source, not where orders execute.)
 | `price` | limit only | absolute limit price (string) |
 | `reduceOnly` | no | default `false`; **Hyperliquid only** (rejected on GMX) |
 | `leverage` | no | integer ≥ 1 |
-| `marginType` | no | `cross` or `isolated`; **Hyperliquid only** (rejected on GMX) |
+| `marginType` | no | `cross` or `isolated`; **Hyperliquid only** (rejected on GMX); when omitted, the asset's current margin mode is preserved |
 | `tp` | no | take-profit, `"5%"` or absolute `"50000"` |
 | `sl` | no | stop-loss, `"2%"` or absolute `"48000"` |
 
@@ -1686,8 +1694,27 @@ Many endpoints accept either `timeWindow` (e.g., "30m", "1h", "4h", "24h", "7d",
 OR `from`/`to` unix timestamps. If both are provided, `from`/`to` takes priority.
 
 **Pagination:**
-Most list endpoints support `page` and `pageSize`. The keyword-mentions endpoint uses
-cursor-based pagination instead (`cursor` parameter).
+Aggregation endpoints (trending-tokens, trending-cas, top-mentions, token-news) use
+`page` + `pageSize`. The keyword-mentions endpoint uses cursor-based pagination instead
+(`cursor` + `limit`).
+
+Defaults and maximums:
+
+| Parameter | Default | Max |
+|---|---|---|
+| `pageSize` | `20` (data) / `50` (aggregations) | `100` |
+| `limit` (keyword-mentions cursor) | `20` | `30` |
+| `page` | `1` | — |
+| `timeWindow` | `24h` | — |
+
+**Per-endpoint parameter notes:**
+- **`keyword-mentions`** — accepts `keywords`, `accountName`, `searchType` (`or`), `from`/`to`,
+  `limit`, `cursor`. Provide either `keywords` OR `accountName` (or both); `accountName`
+  filters mentions by a specific account (e.g. `accountName=elonmusk`).
+- **`token-news`** — accepts `coinIds`, `from`/`to`, `page`, `pageSize` (default `20`). V2
+  always returns news mentions (no `isNews` parameter).
+- **`top-mentions`** — accepts `ticker`, `timeWindow`, `page`, `pageSize`. Account details are
+  always included (no `includeAccountDetails` parameter).
 
 **Ticker format (top-mentions):**
 The `ticker` parameter behavior changes based on whether you include the `$` prefix:
@@ -1720,7 +1747,9 @@ Use `$` when you want only cashtag-specific mentions. Omit `$` for a more inclus
   change without notice.
 - When the user asks about pricing or API key tiers, direct them to
   https://go.elfa.ai/claude-skills for full details on plans and pricing.
-- x402 is currently in beta. Rate limits: 1,000 RPM baseline (per client IP).
+- API-key request rate limits are per tier: Free / Chill / PAYG = **60 requests/min**,
+  Grow = **120 requests/min** (Enterprise custom). These are independent of credit balances.
+- x402 is currently in beta. Rate limits: 1,000 requests per 60s window (per client IP).
 - x402 and API key credits are independent — they do not overlap or share balances.
 - For x402 documentation and setup, refer users to https://docs.elfa.ai/x402-payments.
 - For Auto documentation, refer users to https://docs.elfa.ai/auto/overview.
