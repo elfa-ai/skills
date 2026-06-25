@@ -17,7 +17,9 @@ market context layer, and automated condition engine for crypto. Elfa ingests re
 from Twitter/X, Telegram, and other sources, then structures sentiment, narratives, and
 attention shifts into actionable trading insights. The **Auto** subsystem adds a managed
 condition engine and trigger pipeline — describe what to watch for, and Auto evaluates
-continuously and fires actions when conditions are met.
+continuously and fires actions when conditions are met. The **Trade** subsystem adds
+direct, synchronous order execution — place and manage perp orders on Hyperliquid and GMX
+immediately, without a condition or query.
 
 Full documentation: [docs.elfa.ai](https://docs.elfa.ai)
 
@@ -40,7 +42,7 @@ Elfa supports API-key auth and x402 keyless payments. API keys are optional when
 | Variable | Required | Use |
 |---|---:|---|
 | `ELFA_API_KEY` | No | API-key authenticated requests. Get a free key at <https://go.elfa.ai/claude-skills>. |
-| `ELFA_HMAC_SECRET` | No | HMAC secret for Auto trade-action mutations (`market_order`, `limit_order`, or `llm` callbacks to those) and exchange linking. Notification-only mutations (`notify`, `telegram_bot`, `webhook`, or `llm` callbacks to those) accept unsigned requests today; the HMAC requirement on trade actions reflects current documented policy and is subject to change. Always-signing remains compatible if you prefer to avoid edge cases. |
+| `ELFA_HMAC_SECRET` | No | HMAC secret for Auto trade-action mutations (`market_order`, `limit_order`, or `llm` callbacks to those) and exchange linking, **and for all Trade (`/v2/trade/*`) write routes** (place / cancel / modify / close / tpsl). Auto notification-only mutations (`notify`, `telegram_bot`, `webhook`, or `llm` callbacks to those) and Trade previews accept unsigned requests; the HMAC requirement on trade actions reflects current documented policy and is subject to change. Always-signing remains compatible if you prefer to avoid edge cases. |
 | `ELFA_AGENT_SECRET` | No | Persistent agent identity secret for x402 Auto. Generate once with `openssl rand -hex 32` and reuse for query lifecycle calls. |
 
 x402 wallet signing is handled client-side by `@x402/fetch` or `@x402/axios`.
@@ -180,6 +182,32 @@ _Other:_
 | `/x402/v2/auto/queries/:queryId/sessions/:sessionId` | POST | Get LLM session details (POST, not GET) |
 
 > **Note on x402 Auto scope.** Trade execution actions are not available via x402. Exchange connections, drafts, executions, and the terminal-query DELETE endpoint are API-key-mode only. x402 Auto covers the core monitoring lifecycle (chat, validate, create, poll, cancel, stream, sessions).
+
+#### Trade endpoints (Direct Execution)
+
+Trade is **direct, synchronous** order execution — one request, one order, no condition
+engine. Same `x-elfa-api-key` + HMAC auth and same venues (`hyperliquid`, `gmx`) as Auto;
+they differ only in _when_ the order fires. Trade is **API-key mode only** (no x402). See
+[Trade docs](https://docs.elfa.ai/trade/overview) for full details.
+
+All endpoints are `POST` under `/v2/trade`. HMAC is required on every **write**; previews
+are free and unsigned.
+
+| Endpoint | Method | Description | HMAC | Credits |
+|---|---|---|---|---|
+| `/v2/trade/orders` | POST | Place a market or limit order | Yes | 1 |
+| `/v2/trade/orders/preview` | POST | Dry-run an order (`wouldExecute`) | No | Free |
+| `/v2/trade/orders/cancel` | POST | Cancel a resting order | Yes | Free |
+| `/v2/trade/orders/modify` | POST | Modify size / price / trigger price | Yes | Free |
+| `/v2/trade/positions/close` | POST | Close a position (full or partial) | Yes | 1 |
+| `/v2/trade/positions/close/preview` | POST | Dry-run a close | No | Free |
+| `/v2/trade/positions/tpsl` | POST | Set take-profit / stop-loss | Yes | 1 |
+| `/v2/trade/positions/tpsl/preview` | POST | Dry-run a TP/SL update | No | Free |
+
+> **Credits & billing.** 1 credit per executed order (place / close / tpsl), charged only
+> on a `2xx`; failed fills (`422`/`502`) are never billed. Previews, cancels, and modifies
+> are free. Trade bypasses the monthly spend-cap hard-stop (a key over its limit still trades
+> and bills overage).
 
 For full parameter details, see the [Elfa API documentation](https://docs.elfa.ai).
 
@@ -1740,6 +1768,139 @@ under the `executions` array, but the dedicated endpoints are useful for cross-q
 and pagination.
 
 Executions are API-key-mode only. Not available via x402.
+
+### Step 3b: Trade — Direct Execution
+
+Trade is a **direct, synchronous order API** on `/v2/trade/*`. You call an endpoint, it
+executes against the venue immediately, and the response carries the fill. No condition
+engine, no query, no trigger — one request, one order.
+
+Full Trade docs: [docs.elfa.ai/trade/overview](https://docs.elfa.ai/trade/overview)
+
+#### Trade vs Auto — which to use
+
+Both place orders for the **same linked account** with the **same API key + HMAC** auth and
+the **same venues** (`hyperliquid`, `gmx`). They differ only in _when_ the order fires:
+
+| | **Trade** (`/v2/trade/*`) | **Auto** (`/v2/auto/*`) |
+|---|---|---|
+| Execution | Synchronous — fires on the request | Conditional — fires when a trigger resolves true |
+| You send | An order to execute now | A query (conditions + actions) to evaluate over time |
+| State created | None (proxied straight to the venue) | A persistent query you poll/stream |
+| Best for | "Place this order now", bots that decide off-platform | "Watch for X, then trade", alerting + automation |
+
+Use **Trade** when the agent has already decided and wants to act now. Use **Auto** when you
+want Elfa to watch the market and act for you.
+
+#### Access model
+
+- `x-elfa-api-key` on **every** request (including previews).
+- The key must be **Privy-linked** (enable Auto in the [Developer Portal](https://dev.elfa.ai/)).
+  Unlinked keys get `403`. Same prerequisite as Auto — there is no separate Trade enablement.
+- An **active exchange connection** for the target venue must exist, or the write fails at
+  execution. Verify with `GET /v2/auto/exchanges` before placing orders.
+- **HMAC required on every write** (place / cancel / modify / close / tpsl); previews are
+  unsigned. Unlike Auto, there is **no notification-only bypass** — every Trade write is signed.
+- Trade is **not** available in x402 keyless mode.
+
+#### HMAC signing (Trade mount)
+
+Identical scheme to Auto, with **one critical difference: the signed `mounted_path` is
+relative to the `/v2/trade` mount**, not `/v2/auto` and not the full URL path.
+
+```
+timestamp + method + mounted_path + body
+```
+
+- Request URL: `/v2/trade/orders` → signed path: `/orders`
+- Request URL: `/v2/trade/orders/cancel` → signed path: `/orders/cancel`
+- Request URL: `/v2/trade/positions/close` → signed path: `/positions/close`
+- Request URL: `/v2/trade/positions/tpsl` → signed path: `/positions/tpsl`
+
+Signing `/v2/trade/orders` instead of `/orders` fails verification. Replay window: ±30s.
+Send a per-request UUID in `x-correlation-id` (optional but recommended — used for tracing;
+the backend does **not** de-duplicate, so pair it with a client-side guard to avoid double
+submissions).
+
+#### Sizing an order
+
+Order and close payloads accept three **mutually-exclusive** ways to size — provide exactly one:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `size` | `string` | Base units (contracts), e.g. `"0.1"` BTC |
+| `amount` | `string` | Quote/USD notional, e.g. `"2500"` |
+| `positionSizePercent` | `number` | Percent of available balance, `(0, 100]` |
+
+All sizes and prices are **decimal strings**; only `leverage`, `positionSizePercent`, and
+`closePercent` are numbers. Venue notes: `reduceOnly` / `marginType` are **Hyperliquid-only**
+(rejected for GMX); Hyperliquid has a `10` USDC minimum notional, GMX has none.
+
+#### Place an order (preview → sign → place)
+
+Always preview unfamiliar payloads first (free, unsigned), then place (1 credit, signed):
+
+```bash
+# 1. Preview (free, no HMAC)
+curl -sS -X POST https://api.elfa.ai/v2/trade/orders/preview \
+  -H "x-elfa-api-key: ${ELFA_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"exchange":"hyperliquid","symbol":"BTC","side":"buy","orderType":"market","amount":"25"}'
+# -> { "success": true, "wouldExecute": true }
+
+# 2. Place (1 credit, HMAC required — sign the MOUNTED path "/orders")
+TIMESTAMP=$(date +%s)
+BODY='{"exchange":"hyperliquid","symbol":"BTC","side":"buy","orderType":"market","amount":"25"}'
+SIGNATURE=$(echo -n "${TIMESTAMP}POST/orders${BODY}" | \
+  openssl dgst -sha256 -hmac "${ELFA_HMAC_SECRET}" -hex | awk '{print $2}')
+
+curl -sS -X POST https://api.elfa.ai/v2/trade/orders \
+  -H "x-elfa-api-key: ${ELFA_API_KEY}" \
+  -H "x-elfa-signature: ${SIGNATURE}" \
+  -H "x-elfa-timestamp: ${TIMESTAMP}" \
+  -H "x-correlation-id: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d "${BODY}"
+# -> { "success": true, "orderId": "123456789", "filledSize": "0.0004", "avgFillPrice": "62500" }
+```
+
+With the bundled helper (handles `/v2/trade` signing automatically when `ELFA_HMAC_SECRET` is set):
+
+```bash
+./scripts/elfa_call.sh /v2/trade/orders/preview -d '{"exchange":"hyperliquid","symbol":"BTC","side":"buy","orderType":"market","amount":"25"}'
+./scripts/elfa_call.sh /v2/trade/orders -d '{"exchange":"hyperliquid","symbol":"BTC","side":"buy","orderType":"market","amount":"25"}' --hmac-secret "$ELFA_HMAC_SECRET"
+```
+
+#### Manage the position
+
+All write routes sign the same way — just change `mounted_path` and `body`:
+
+- **Attach TP/SL** — `POST /v2/trade/positions/tpsl` (`{ "exchange": "...", "symbol": "BTC", "tp": "72000", "sl": "60000" }`)
+- **Close (full or partial)** — `POST /v2/trade/positions/close` (`{ ..., "orderType": "market", "closePercent": 100 }`)
+- **Cancel a resting order** — `POST /v2/trade/orders/cancel` (`{ ..., "orderId": "123456789" }`)
+- **Modify a resting order** — `POST /v2/trade/orders/modify` (`{ ..., "orderId": "123456789", "price": "61000" }`)
+
+#### Errors and reconciliation
+
+Failures carry `success: false` and a structured `error` `{ code, message }` (e.g.
+`INSUFFICIENT_MARGIN`, `TRADE_SERVICE_UNAVAILABLE`).
+
+| Status | Meaning | Billed? |
+|---|---|---|
+| `200` | Success — order executed / action accepted | Yes (writes that cost credits) |
+| `400` | Missing or invalid parameters | No |
+| `401` | Missing/invalid API key, signature, timestamp, or clock skew | No |
+| `403` | API key not linked for trading | No |
+| `422` | Order rejected by the venue (e.g. insufficient margin) | No |
+| `502` | Transport / trade-service failure (`TRADE_SERVICE_UNAVAILABLE`), incl. timeout | No |
+
+> **Reconcile before retrying a `502`.** A write blocks up to the trade service's 60-second
+> timeout. On timeout the order **may still have landed** at the venue, and there is no
+> server-side idempotency lock — a blind retry can double-fill. Read your open
+> orders/positions from the venue first and only resubmit if the order is genuinely absent.
+
+Trade executes orders but does **not** proxy balances, positions, or PnL — read those from the
+venue directly (see [Trading Execution](https://docs.elfa.ai/auto/trading-execution)).
 
 ### Step 4: Generating code snippets
 
