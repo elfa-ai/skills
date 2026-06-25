@@ -2225,6 +2225,337 @@
 				],
 				"type": "object",
 				"additionalProperties": false
+			},
+			"ApiKeyTradeErrorDetail": {
+				"description": "Structured error returned by the trade service for a failed/rejected action.",
+				"properties": {
+					"code": {
+						"type": "string",
+						"description": "Machine-readable error code (e.g. `INSUFFICIENT_MARGIN`, `TRADE_SERVICE_UNAVAILABLE`)."
+					},
+					"message": {
+						"type": "string",
+						"description": "Human-readable error message."
+					}
+				},
+				"required": [
+					"code",
+					"message"
+				],
+				"type": "object",
+				"additionalProperties": false
+			},
+			"ApiKeyTradeResultResponse": {
+				"description": "Result of an executed order/position action (mirrors the trade service's response).",
+				"properties": {
+					"success": {
+						"type": "boolean",
+						"description": "`true` when the venue accepted the action."
+					},
+					"orderId": {
+						"type": "string",
+						"description": "Venue order id, when an order was created."
+					},
+					"filledSize": {
+						"type": "string",
+						"description": "Filled size (decimal string), when applicable."
+					},
+					"avgFillPrice": {
+						"type": "string",
+						"description": "Average fill price (decimal string), when applicable."
+					},
+					"error": {
+						"$ref": "#/components/schemas/ApiKeyTradeErrorDetail",
+						"description": "Present when `success` is `false`."
+					}
+				},
+				"required": [
+					"success"
+				],
+				"type": "object",
+				"additionalProperties": false
+			},
+			"ApiKeyTradeErrorResponse": {
+				"description": "Error envelope for failed trade requests. Order-level rejections return `422`\nand transport failures return `502` (e.g. `TRADE_SERVICE_UNAVAILABLE`);\nboth carry `success: false` so a failed fill is never billed.",
+				"properties": {
+					"success": {
+						"type": "boolean"
+					},
+					"error": {
+						"$ref": "#/components/schemas/ApiKeyTradeErrorDetail"
+					}
+				},
+				"required": [
+					"success",
+					"error"
+				],
+				"type": "object",
+				"additionalProperties": false
+			},
+			"ApiKeyTradeExchange": {
+				"type": "string",
+				"enum": [
+					"hyperliquid",
+					"gmx"
+				],
+				"description": "Venues available to the direct-trade API (agent-wallet / Privy-signed)."
+			},
+			"ApiKeyPlaceOrderRequestBody": {
+				"description": "Market/limit order placement — `POST /v2/trade/orders` (+ `/preview`).",
+				"properties": {
+					"exchange": {
+						"$ref": "#/components/schemas/ApiKeyTradeExchange"
+					},
+					"symbol": {
+						"type": "string",
+						"description": "Venue symbol, e.g. `BTC`.",
+						"example": "BTC"
+					},
+					"side": {
+						"type": "string",
+						"enum": [
+							"buy",
+							"sell"
+						]
+					},
+					"orderType": {
+						"type": "string",
+						"enum": [
+							"market",
+							"limit"
+						],
+						"description": "`market` fills immediately; `limit` rests at `price`."
+					},
+					"size": {
+						"type": "string",
+						"description": "Order size in base units (decimal string).",
+						"example": "0.1"
+					},
+					"amount": {
+						"type": "string",
+						"description": "Order size in quote/USD terms (decimal string).",
+						"example": "2500"
+					},
+					"positionSizePercent": {
+						"type": "number",
+						"format": "double",
+						"description": "Size as a percentage of available balance (0–100).",
+						"example": 25
+					},
+					"price": {
+						"type": "string",
+						"description": "Limit price (decimal string); required for `limit` orders.",
+						"example": "65000"
+					},
+					"leverage": {
+						"type": "number",
+						"format": "double",
+						"description": "Leverage multiplier.",
+						"example": 5
+					},
+					"marginType": {
+						"type": "string",
+						"enum": [
+							"cross",
+							"isolated"
+						]
+					},
+					"tp": {
+						"type": "string",
+						"description": "Attached take-profit trigger price (decimal string).",
+						"example": "72000"
+					},
+					"sl": {
+						"type": "string",
+						"description": "Attached stop-loss trigger price (decimal string).",
+						"example": "60000"
+					},
+					"reduceOnly": {
+						"type": "boolean",
+						"description": "Only reduce an existing position; never open/increase."
+					}
+				},
+				"required": [
+					"exchange",
+					"symbol",
+					"side",
+					"orderType"
+				],
+				"type": "object",
+				"additionalProperties": false
+			},
+			"ApiKeyTradePreviewResponse": {
+				"description": "Result of a preview (dry-run) — no order is placed.",
+				"properties": {
+					"success": {
+						"type": "boolean",
+						"description": "`true` when the preview ran successfully."
+					},
+					"wouldExecute": {
+						"type": "boolean",
+						"description": "Whether the order would execute as specified."
+					},
+					"error": {
+						"$ref": "#/components/schemas/ApiKeyTradeErrorDetail",
+						"description": "Present when `success` is `false`."
+					}
+				},
+				"required": [
+					"success",
+					"wouldExecute"
+				],
+				"type": "object",
+				"additionalProperties": false
+			},
+			"ApiKeyCancelOrderRequestBody": {
+				"description": "Cancel a resting order — `POST /v2/trade/orders/cancel`.",
+				"properties": {
+					"exchange": {
+						"$ref": "#/components/schemas/ApiKeyTradeExchange"
+					},
+					"symbol": {
+						"type": "string",
+						"example": "BTC"
+					},
+					"orderId": {
+						"type": "string",
+						"description": "Venue order id to cancel.",
+						"example": "123456789"
+					}
+				},
+				"required": [
+					"exchange",
+					"symbol",
+					"orderId"
+				],
+				"type": "object",
+				"additionalProperties": false
+			},
+			"ApiKeyModifyOrderRequestBody": {
+				"description": "Modify a resting order — `POST /v2/trade/orders/modify`.",
+				"properties": {
+					"exchange": {
+						"$ref": "#/components/schemas/ApiKeyTradeExchange"
+					},
+					"symbol": {
+						"type": "string",
+						"example": "BTC"
+					},
+					"orderId": {
+						"type": "string",
+						"description": "Venue order id to modify.",
+						"example": "123456789"
+					},
+					"size": {
+						"type": "string",
+						"description": "New size (decimal string).",
+						"example": "0.2"
+					},
+					"price": {
+						"type": "string",
+						"description": "New limit price (decimal string).",
+						"example": "64000"
+					},
+					"triggerPrice": {
+						"type": "string",
+						"description": "New trigger price for stop/trigger orders (decimal string).",
+						"example": "60000"
+					}
+				},
+				"required": [
+					"exchange",
+					"symbol",
+					"orderId"
+				],
+				"type": "object",
+				"additionalProperties": false
+			},
+			"ApiKeyClosePositionRequestBody": {
+				"description": "Close an open position — `POST /v2/trade/positions/close` (+ `/preview`).",
+				"properties": {
+					"exchange": {
+						"$ref": "#/components/schemas/ApiKeyTradeExchange"
+					},
+					"symbol": {
+						"type": "string",
+						"example": "BTC"
+					},
+					"orderType": {
+						"type": "string",
+						"enum": [
+							"market",
+							"limit"
+						],
+						"description": "Order type used to close."
+					},
+					"size": {
+						"type": "string",
+						"description": "Base-unit size to close (decimal string).",
+						"example": "0.1"
+					},
+					"amount": {
+						"type": "string",
+						"description": "Quote/USD size to close (decimal string).",
+						"example": "2500"
+					},
+					"positionSizePercent": {
+						"type": "number",
+						"format": "double",
+						"description": "Close size as a percentage of position size (0–100).",
+						"example": 50
+					},
+					"closePercent": {
+						"type": "number",
+						"format": "double",
+						"description": "Percentage of the position to close (0–100).",
+						"example": 100
+					},
+					"price": {
+						"type": "string",
+						"description": "Limit price for a `limit` close (decimal string).",
+						"example": "65000"
+					}
+				},
+				"required": [
+					"exchange",
+					"symbol",
+					"orderType"
+				],
+				"type": "object",
+				"additionalProperties": false
+			},
+			"ApiKeySetPositionTpslRequestBody": {
+				"description": "Set take-profit / stop-loss on a position — `POST /v2/trade/positions/tpsl` (+ `/preview`).",
+				"properties": {
+					"exchange": {
+						"$ref": "#/components/schemas/ApiKeyTradeExchange"
+					},
+					"symbol": {
+						"type": "string",
+						"example": "BTC"
+					},
+					"tp": {
+						"type": "string",
+						"description": "Take-profit trigger price (decimal string).",
+						"example": "72000"
+					},
+					"sl": {
+						"type": "string",
+						"description": "Stop-loss trigger price (decimal string).",
+						"example": "60000"
+					},
+					"size": {
+						"type": "string",
+						"description": "Size the TP/SL applies to (decimal string); defaults to full position.",
+						"example": "0.1"
+					}
+				},
+				"required": [
+					"exchange",
+					"symbol"
+				],
+				"type": "object",
+				"additionalProperties": false
 			}
 		},
 		"securitySchemes": {
@@ -6876,6 +7207,827 @@
 					}
 				]
 			}
+		},
+		"/v2/trade/orders": {
+			"post": {
+				"operationId": "trade-place-order-v2",
+				"responses": {
+					"200": {
+						"description": "Ok",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyTradeResultResponse"
+								},
+								"examples": {
+									"success": {
+										"summary": "Example successful response",
+										"value": {
+											"success": true
+										}
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Missing or invalid parameters",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyTradeErrorResponse"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Missing or invalid authentication",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyTradeErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "API key not linked for trading",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyTradeErrorResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Order rejected by the venue",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyTradeErrorResponse"
+								}
+							}
+						}
+					},
+					"502": {
+						"description": "Trade service unavailable",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyTradeErrorResponse"
+								}
+							}
+						}
+					}
+				},
+				"description": "Place a market or limit order on a perp venue for your linked account.\n\nExecutes synchronously and returns the fill.\n\n### Cost\n`1` credit per executed order.\n\n### Auth\n`x-elfa-api-key` + **HMAC** (`x-elfa-timestamp`, `x-elfa-signature`).\n\n### Request Example\n```json\n{ \"exchange\": \"hyperliquid\", \"symbol\": \"BTC\", \"side\": \"buy\", \"orderType\": \"market\", \"size\": \"0.1\" }\n```",
+				"summary": "Place Order",
+				"tags": [
+					"v2 Trade"
+				],
+				"security": [
+					{
+						"api_key": []
+					}
+				],
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/ApiKeyPlaceOrderRequestBody"
+							},
+							"examples": {
+								"default": {
+									"summary": "Example request",
+									"value": {
+										"exchange": "hyperliquid",
+										"symbol": "BTC",
+										"side": "buy",
+										"orderType": "market"
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/v2/trade/orders/preview": {
+			"post": {
+				"operationId": "trade-preview-order-v2",
+				"responses": {
+					"200": {
+						"description": "Ok",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyTradePreviewResponse"
+								},
+								"examples": {
+									"success": {
+										"summary": "Example successful response",
+										"value": {
+											"success": true,
+											"wouldExecute": true
+										}
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Missing or invalid parameters",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyTradeErrorResponse"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Missing or invalid API key",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyTradeErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "API key not linked for trading",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyTradeErrorResponse"
+								}
+							}
+						}
+					},
+					"502": {
+						"description": "Trade service unavailable",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyTradeErrorResponse"
+								}
+							}
+						}
+					}
+				},
+				"description": "Preview (dry-run) a market or limit order without placing it.\n\n### Cost\nFree.\n\n### Auth\n`x-elfa-api-key` (no HMAC).",
+				"summary": "Preview Order",
+				"tags": [
+					"v2 Trade"
+				],
+				"security": [
+					{
+						"api_key": []
+					}
+				],
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/ApiKeyPlaceOrderRequestBody"
+							},
+							"examples": {
+								"default": {
+									"summary": "Example request",
+									"value": {
+										"exchange": "hyperliquid",
+										"symbol": "BTC",
+										"side": "buy",
+										"orderType": "market"
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/v2/trade/orders/cancel": {
+			"post": {
+				"operationId": "trade-cancel-order-v2",
+				"responses": {
+					"200": {
+						"description": "Ok",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyTradeResultResponse"
+								},
+								"examples": {
+									"success": {
+										"summary": "Example successful response",
+										"value": {
+											"success": true
+										}
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Missing or invalid parameters",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyTradeErrorResponse"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Missing or invalid authentication",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyTradeErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "API key not linked for trading",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyTradeErrorResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Cancel rejected by the venue",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyTradeErrorResponse"
+								}
+							}
+						}
+					},
+					"502": {
+						"description": "Trade service unavailable",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyTradeErrorResponse"
+								}
+							}
+						}
+					}
+				},
+				"description": "Cancel a resting order.\n\n### Cost\nFree.\n\n### Auth\n`x-elfa-api-key` + **HMAC** (`x-elfa-timestamp`, `x-elfa-signature`).",
+				"summary": "Cancel Order",
+				"tags": [
+					"v2 Trade"
+				],
+				"security": [
+					{
+						"api_key": []
+					}
+				],
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/ApiKeyCancelOrderRequestBody"
+							},
+							"examples": {
+								"default": {
+									"summary": "Example request",
+									"value": {
+										"exchange": "hyperliquid",
+										"symbol": "BTC",
+										"orderId": "123456789"
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/v2/trade/orders/modify": {
+			"post": {
+				"operationId": "trade-modify-order-v2",
+				"responses": {
+					"200": {
+						"description": "Ok",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyTradeResultResponse"
+								},
+								"examples": {
+									"success": {
+										"summary": "Example successful response",
+										"value": {
+											"success": true
+										}
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Missing or invalid parameters",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyTradeErrorResponse"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Missing or invalid authentication",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyTradeErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "API key not linked for trading",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyTradeErrorResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Modify rejected by the venue",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyTradeErrorResponse"
+								}
+							}
+						}
+					},
+					"502": {
+						"description": "Trade service unavailable",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyTradeErrorResponse"
+								}
+							}
+						}
+					}
+				},
+				"description": "Modify a resting order (size, price, or trigger price).\n\n### Cost\nFree.\n\n### Auth\n`x-elfa-api-key` + **HMAC** (`x-elfa-timestamp`, `x-elfa-signature`).",
+				"summary": "Modify Order",
+				"tags": [
+					"v2 Trade"
+				],
+				"security": [
+					{
+						"api_key": []
+					}
+				],
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/ApiKeyModifyOrderRequestBody"
+							},
+							"examples": {
+								"default": {
+									"summary": "Example request",
+									"value": {
+										"exchange": "hyperliquid",
+										"symbol": "BTC",
+										"orderId": "123456789"
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/v2/trade/positions/close": {
+			"post": {
+				"operationId": "trade-close-position-v2",
+				"responses": {
+					"200": {
+						"description": "Ok",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyTradeResultResponse"
+								},
+								"examples": {
+									"success": {
+										"summary": "Example successful response",
+										"value": {
+											"success": true
+										}
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Missing or invalid parameters",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyTradeErrorResponse"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Missing or invalid authentication",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyTradeErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "API key not linked for trading",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyTradeErrorResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Close rejected by the venue",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyTradeErrorResponse"
+								}
+							}
+						}
+					},
+					"502": {
+						"description": "Trade service unavailable",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyTradeErrorResponse"
+								}
+							}
+						}
+					}
+				},
+				"description": "Close an open position (fully or partially).\n\n### Cost\n`1` credit per executed close.\n\n### Auth\n`x-elfa-api-key` + **HMAC** (`x-elfa-timestamp`, `x-elfa-signature`).",
+				"summary": "Close Position",
+				"tags": [
+					"v2 Trade"
+				],
+				"security": [
+					{
+						"api_key": []
+					}
+				],
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/ApiKeyClosePositionRequestBody"
+							},
+							"examples": {
+								"default": {
+									"summary": "Example request",
+									"value": {
+										"exchange": "hyperliquid",
+										"symbol": "BTC",
+										"orderType": "market"
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/v2/trade/positions/close/preview": {
+			"post": {
+				"operationId": "trade-preview-close-position-v2",
+				"responses": {
+					"200": {
+						"description": "Ok",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyTradePreviewResponse"
+								},
+								"examples": {
+									"success": {
+										"summary": "Example successful response",
+										"value": {
+											"success": true,
+											"wouldExecute": true
+										}
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Missing or invalid parameters",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyTradeErrorResponse"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Missing or invalid API key",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyTradeErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "API key not linked for trading",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyTradeErrorResponse"
+								}
+							}
+						}
+					},
+					"502": {
+						"description": "Trade service unavailable",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyTradeErrorResponse"
+								}
+							}
+						}
+					}
+				},
+				"description": "Preview (dry-run) a position close without executing it.\n\n### Cost\nFree.\n\n### Auth\n`x-elfa-api-key` (no HMAC).",
+				"summary": "Preview Close Position",
+				"tags": [
+					"v2 Trade"
+				],
+				"security": [
+					{
+						"api_key": []
+					}
+				],
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/ApiKeyClosePositionRequestBody"
+							},
+							"examples": {
+								"default": {
+									"summary": "Example request",
+									"value": {
+										"exchange": "hyperliquid",
+										"symbol": "BTC",
+										"orderType": "market"
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/v2/trade/positions/tpsl": {
+			"post": {
+				"operationId": "trade-set-position-tpsl-v2",
+				"responses": {
+					"200": {
+						"description": "Ok",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyTradeResultResponse"
+								},
+								"examples": {
+									"success": {
+										"summary": "Example successful response",
+										"value": {
+											"success": true
+										}
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Missing or invalid parameters",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyTradeErrorResponse"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Missing or invalid authentication",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyTradeErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "API key not linked for trading",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyTradeErrorResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "TP/SL rejected by the venue",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyTradeErrorResponse"
+								}
+							}
+						}
+					},
+					"502": {
+						"description": "Trade service unavailable",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyTradeErrorResponse"
+								}
+							}
+						}
+					}
+				},
+				"description": "Set take-profit / stop-loss triggers on an open position.\n\n### Cost\n`1` credit per executed update.\n\n### Auth\n`x-elfa-api-key` + **HMAC** (`x-elfa-timestamp`, `x-elfa-signature`).",
+				"summary": "Set Position TP/SL",
+				"tags": [
+					"v2 Trade"
+				],
+				"security": [
+					{
+						"api_key": []
+					}
+				],
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/ApiKeySetPositionTpslRequestBody"
+							},
+							"examples": {
+								"default": {
+									"summary": "Example request",
+									"value": {
+										"exchange": "hyperliquid",
+										"symbol": "BTC"
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/v2/trade/positions/tpsl/preview": {
+			"post": {
+				"operationId": "trade-preview-position-tpsl-v2",
+				"responses": {
+					"200": {
+						"description": "Ok",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyTradePreviewResponse"
+								},
+								"examples": {
+									"success": {
+										"summary": "Example successful response",
+										"value": {
+											"success": true,
+											"wouldExecute": true
+										}
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Missing or invalid parameters",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyTradeErrorResponse"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Missing or invalid API key",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyTradeErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "API key not linked for trading",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyTradeErrorResponse"
+								}
+							}
+						}
+					},
+					"502": {
+						"description": "Trade service unavailable",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyTradeErrorResponse"
+								}
+							}
+						}
+					}
+				},
+				"description": "Preview (dry-run) a TP/SL update without executing it.\n\n### Cost\nFree.\n\n### Auth\n`x-elfa-api-key` (no HMAC).",
+				"summary": "Preview Set Position TP/SL",
+				"tags": [
+					"v2 Trade"
+				],
+				"security": [
+					{
+						"api_key": []
+					}
+				],
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/ApiKeySetPositionTpslRequestBody"
+							},
+							"examples": {
+								"default": {
+									"summary": "Example request",
+									"value": {
+										"exchange": "hyperliquid",
+										"symbol": "BTC"
+									}
+								}
+							}
+						}
+					}
+				}
+			}
 		}
 	},
 	"servers": [
@@ -6908,6 +8060,10 @@
 		{
 			"name": "v2 Auto",
 			"description": "Conditional query builder and runner: create, validate, poll, and stream EQL queries, and manage LLM sessions. (Beta)"
+		},
+		{
+			"name": "v2 Trade",
+			"description": "Direct, synchronous trading for your linked (Privy) account — place and manage orders immediately, distinct from Auto's conditional queries. (Beta)\n\n**Venues:** `hyperliquid`, `gmx`.\n\n**Auth:** `x-elfa-api-key` (linked to a Privy account; enable Auto in the dev portal). Writes (place / cancel / modify / close / tpsl) additionally require HMAC signing — send `x-elfa-timestamp` (unix seconds) and `x-elfa-signature` (hex HMAC-SHA256 over `timestamp + method + path + body`, where `path` is relative to the mount, e.g. `/orders`). Previews do not require HMAC.\n\n**Credits:** `1` credit per executed order (place / close / tpsl). Previews, cancels, and modifies are free. Failed fills (non-2xx) are never billed.\n\n**Idempotency:** not de-duplicated server-side. Send a per-request UUID in `x-correlation-id` (recommended, tracing) and avoid duplicate submissions; on a `502` timeout the order may still have landed — reconcile before retrying."
 		},
 		{
 			"name": "x402 Account",
