@@ -6,8 +6,10 @@ description: >
   addresses, AI market chat, integration examples, curl/code snippets, automated alerts,
   EQL queries, trigger pipelines, and agent workflows that react to market conditions.
   Auto can also place live perp trades on Hyperliquid and GMX (market/limit orders with
-  TP/SL) when a condition fires, and tracks crypto plus HIP-3 assets (tokenized equities,
-  commodities, FX). Supports API-key calls and x402 pay-per-request USDC on Base.
+  TP/SL) when a condition fires, trigger on Kalshi and Polymarket prediction markets,
+  re-fire recurring plans via `repeat`, run calendar schedules via `cron.schedule`, and
+  tracks crypto plus HIP-3 assets (tokenized equities, commodities, FX). Supports API-key
+  calls and x402 pay-per-request USDC on Base.
 ---
 
 # Elfa API Skill
@@ -410,23 +412,25 @@ Pick the condition source by user intent **before** writing condition args:
 |---|---|---|
 | Account-anchored post intent (`@user posts ...`) | `source: "tweet"` | `args.username` (no `@`), `args.text`, `args.minConfidence` (use `80` if user gives no threshold) |
 | World event intent (ETF approval, exploit, sanctions, etc.) | `source: "news"` | `args.text`, `args.minConfidence` (use `80` if user gives no threshold) |
-| Prediction-market move/lifecycle on a named open market | `source: "kalshi"` | `method` (e.g. `yes_price`, `status`, `result`), `args.ticker` (a currently-open Kalshi market), `operator`/`value` per the per-method allowlists |
+| Prediction-market move/lifecycle on a named open Kalshi market | `source: "kalshi"` | `method` (e.g. `yes_price`, `status`, `result`), `args.ticker` (a currently-open Kalshi market), `operator`/`value` per the per-method allowlists |
+| Prediction-market price/trade on a Polymarket outcome token | `source: "polymarket"` | `method` (`price`, `bid`, `ask`, `size`, `side`), `args.ticker` (outcome-token `asset_id`), `operator`/`value` per the per-method allowlists |
 | Fuzzy world-state predicate not naturally expressible as a post or event | `source: "llm"` | `method: "athena_condition"`, `args.query`, `args.period` (`>= 1h`) |
 
-When the prompt is account-anchored, **start with `tweet`** — do not route to `news` or `llm` first. When the prompt is event-anchored without a specific account, start with `news`. When the trigger maps to a concrete prediction market you can name by ticker, use `kalshi` (prefer it over `llm` for supported Kalshi methods). Use `llm` (`athena_condition`) only when the predicate cannot reasonably be matched against a post, event, or open Kalshi market.
+When the prompt is account-anchored, **start with `tweet`** — do not route to `news` or `llm` first. When the prompt is event-anchored without a specific account, start with `news`. When the trigger maps to a concrete prediction market you can name (a Kalshi ticker or a Polymarket outcome-token id), use `kalshi` / `polymarket` (prefer them over `llm` for supported methods). Use `llm` (`athena_condition`) only when the predicate cannot reasonably be matched against a post, event, or named prediction market.
 
 #### When to suggest Auto
 
 - User wants alerts based on **price thresholds** ("alert me when BTC crosses 100k")
 - User wants alerts based on **technical indicators** ("notify when RSI drops below 30")
-- User wants **scheduled checks** ("check every 4 hours")
+- User wants **scheduled checks** ("check every 4 hours") or **calendar schedules** ("every weekday at 9am New York time" — use `cron.schedule`)
+- User wants the **same alert to keep firing on its own condition** ("notify me every time BTC dips below 60k") — add the top-level `repeat` object (`cooldown` + `maxTriggers`)
 - User wants **narrative/sentiment monitoring** ("alert when AI token narrative shifts")
 - User wants **multi-condition triggers** ("BTC above 100k AND ETH above 3500")
 - User wants to **compare live metrics** ("alert when price crosses above Bollinger Band")
 - User wants **LLM analysis on trigger** ("when it triggers, run a full analysis")
 - User wants **account-anchored social triggers** ("notify me when @cz_binance posts that Binance Alpha is listing a new token") — use **Signal: X/Twitter Post** (`source: "tweet"`)
 - User wants **event-driven triggers** ("alert me when SEC approves a spot ETH ETF") — use **Signal: Event** (`source: "news"`)
-- User wants **prediction-market triggers** ("alert when this Kalshi market's YES probability crosses 60%", "notify when the market settles YES") — use **Prediction Markets** (`source: "kalshi"`)
+- User wants **prediction-market triggers** ("alert when this Kalshi market's YES probability crosses 60%", "notify when the market settles YES", "alert when this Polymarket outcome trades above 60c") — use **Prediction Markets** (`source: "kalshi"` or `source: "polymarket"`)
 
 #### Auto access models
 
@@ -721,7 +725,7 @@ in a JSON code block — extract, validate via `/queries/validate`, then submit 
 
 **Prompting tips for Builder Chat:**
 - Include `title` and `description` (shown in notifications so recipients know what fired hours/days later)
-- Specify symbols, timeframe, trigger behavior (one-time vs recurring), delivery target
+- Specify symbols, timeframe, trigger behavior (one-time — the default — vs recurring), delivery target. For recurring on the **same condition**, ask for the `repeat` object (`cooldown` + `maxTriggers`); for a fixed schedule, use a `cron` condition
 - For Signal triggers, give a **factual** match description (avoid vague phrasing like "bullish vibes")
 - Append `"If anything is unsupported, return the closest supported query and list substitutions"` to handle edge cases gracefully
 - Prefer `expiresIn` of `24h`–`3d` for fresh signals
@@ -839,7 +843,8 @@ Build an Auto query:
 
 #### Query model (EQL)
 
-A query contains `conditions`, `actions`, and `expiresIn`:
+A query contains `conditions`, `actions`, and `expiresIn` (plus an optional `repeat`
+sibling — by default a plan is one-shot; see **Repeat** below):
 
 ```json
 {
@@ -869,6 +874,56 @@ A query contains `conditions`, `actions`, and `expiresIn`:
 - Multi-symbol: a single query can require BTC AND ETH AND SOL conditions jointly
 
 **Allowed `expiresIn` values:** `1h`, `2h`, `4h`, `8h`, `12h`, `24h`, `2d`, `3d`, `5d`, `7d`
+
+**Repeat (`repeat`) — recurring plans on their own conditions:**
+
+By default a plan is **one-shot**: it fires once and moves to a terminal state. The optional
+top-level `repeat` object (a sibling of `expiresIn`) keeps a plan active and makes it re-fire
+on **its own** conditions — the right tool for "notify me *every time* BTC dips below 60k"
+without a fixed cron cadence.
+
+```json
+{
+  "conditions": { "AND": ["..."] },
+  "actions": ["..."],
+  "expiresIn": "7d",
+  "repeat": { "cooldown": "1h", "maxTriggers": 10 }
+}
+```
+
+Both fields are **mandatory** when `repeat` is present:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `cooldown` | string | Minimum time between fires. `"0"` disables the rate limit. |
+| `maxTriggers` | number | Lifetime cap on fires (`1`–`1000`); reaching it makes the plan terminal. |
+
+- **`cooldown` allowed values** (its own set — sub-hour is permitted, unlike the cron/llm 1h minimum): `1m`, `5m`, `15m`, `30m`, `1h`, `2h`, `4h`, `8h`, `12h`, `24h`, `1d`, `7d`, plus `"0"`. Use `"0"` for "fire on every distinct event" (e.g. every matching tweet).
+- **`maxTriggers`** counts how many times the plan **fires** over its lifetime (distinct from the number of action steps). Sanity-check `cooldown × maxTriggers` against `expiresIn` — if there isn't enough runway, the plan expires before reaching the cap. A longer `expiresIn` buys patience through quiet periods; it does **not** raise the fire cap.
+- **Single reset rule.** A `repeat` plan re-fires only once its triggering signal has cleared. **Level** conditions (`price` / `ta` / `llm`-boolean) disarm on fire and re-arm when the whole condition tree next evaluates false; **event** conditions (`tweet.semantic` / `news.semantic`) consume the matched mention and re-fire on the **next distinct** mention.
+
+> **v1 limitations:** `repeat` is **not** supported on trade/order actions (`market_order`,
+> `limit_order`), and it **cannot** be combined with a recurring cron condition
+> (`cron.every` / `cron.schedule`) — both provide recurrence, so combining them is rejected
+> at validation as `EQL_INVALID_REPEAT`. For a fixed-cadence recurring plan, use the cron
+> condition on its own; for a condition-driven recurring plan, use `repeat`.
+
+**Avoiding over-triggering:** the main risk is a condition that keeps flipping true — a
+metric flapping around its threshold, or a chatty account. `cooldown` is your rate-limit
+floor (never use `"0"` on level/metric conditions); `maxTriggers` is your hard circuit
+breaker (set it conservatively so a runaway condition self-limits). A **level** condition
+like `price < 60000` fires on *every* re-crossing, so prefer transition operators
+(`crosses_below` / `crosses_above` over `<` / `>`), give the threshold room from the current
+value, match `cooldown` to the signal's timeframe, and start conservative then loosen.
+
+Recommended starting points:
+
+| Condition type | `cooldown` | `maxTriggers` | Notes |
+|---|---|---|---|
+| Price / TA level (`price`, `ta`) | `1h`–`4h` (≥ your timeframe) | `3`–`10` | Prefer `crosses_*` operators; avoid `"0"` here. |
+| LLM predicate (`llm.athena_condition`) | `≥ period` (min `1h`) | `3`–`5` | The LLM already re-checks on `period` — don't re-alert faster than it re-evaluates. |
+| Event — single / quiet account (`tweet`) | `0`–`15m` | `10`–`20` | Each distinct post is a discrete event; `"0"` is fine unless the account is chatty. |
+| Event — noisy account / broad `news` | `15m`–`1h` | `10`–`20` | A small cooldown collapses a burst of mentions into one alert. |
 
 **Allowed action types:** `webhook`, `notify`, `telegram_bot`, `llm`, `market_order`, `limit_order`. The `actions` array is **exactly one step** per query — run standalone LLM work with `params.objective`; chain follow-up work via `llm` action with `params.callback.action`, or have your runner fan out from the trigger event.
 
@@ -942,6 +997,21 @@ where `market_order` / `limit_order` actions execute. A `price`/`ta` condition w
 | `once` | `period` | True on first due evaluation at/after creation + period |
 | `onceRemainTrue` | `period` | True on first due evaluation and stays true |
 | `every` | `period` | True at each period interval |
+| `schedule` | `expression`, `timezone?` | True whenever the 5-field cron `expression` matches in `timezone` |
+
+`once`, `onceRemainTrue`, and `every` are **interval** methods measured from query creation.
+`schedule` is a **calendar/wall-clock** method:
+
+- `expression` is a classic **5-field** cron string (`minute hour day-of-month month day-of-week`) — e.g. `0 9 * * 1-5` (weekdays at 09:00).
+- `timezone` is optional and defaults to `UTC`. When set it must be a valid **IANA** name (e.g. `America/New_York`, `Asia/Singapore`) so daylight-saving transitions are handled correctly. Fixed-offset strings like `+02:00` are **not** accepted.
+- `schedule` enforces the same **1h-minimum cadence** as the other cron methods: the minute field must be a single fixed value (`0`–`59`). Wildcards, steps, lists, or ranges in the minute field are rejected.
+  - Allowed: `7 * * * *` (hourly at minute 7), `0 9 * * 1-5` (weekdays 09:00), `30 8 * * *` (daily 08:30).
+  - Not allowed: `* * * * *` (every minute), `*/15 * * * *` (every 15 min), `0,30 * * * *` (twice per hour).
+- `schedule` takes **no** `period` arg.
+
+> **Builder Chat support pending:** `cron.schedule` is available on the direct EQL/API path
+> (Validate / Create). Builder Chat does not yet reliably generate `cron.schedule` — author
+> calendar schedules directly and confirm with `/v2/auto/queries/validate`.
 
 **LLM source (`llm`):**
 
@@ -1023,8 +1093,11 @@ Additional constraints:
 
 **`minConfidence` tuning:** default `80`; raise to `85`–`90` for fewer false positives; lower to `70`–`75` if you need higher recall.
 
-**Scheduling period (cron / llm):** minimum `1h`. Allowed: `1h`, `2h`, `4h`, `8h`,
-`12h`, `24h`, `1d`, `7d`.
+**Scheduling period (cron / llm):** for `cron` **interval** methods (`once`,
+`onceRemainTrue`, `every`) and `llm` sources, `period` is a scheduling interval with a
+minimum of `1h`. Allowed: `1h`, `2h`, `4h`, `8h`, `12h`, `24h`, `1d`, `7d`. `cron.schedule`
+does **not** take a `period` — it is driven by its 5-field cron `expression` and follows the
+same 1h-minimum cadence (at most one fire per hour).
 
 **Signal sources are event-driven**, not schedule-driven — they evaluate when relevant mention events arrive, not on a polling interval. They can still be combined with other condition types via `AND`/`OR`.
 
@@ -1087,7 +1160,63 @@ later moves to `settled` (`status`) or resolves (`result` / `settlement_value`) 
 ```
 
 Full method tables, value enums, and example automations:
-[Prediction Markets](https://docs.elfa.ai/auto/prediction-markets).
+[Prediction Markets → Kalshi](https://docs.elfa.ai/auto/prediction-markets#kalshi).
+
+**Prediction Markets source (`polymarket`):**
+
+Trigger on live Polymarket outcome-token activity: last traded price, best bid/ask, and the
+size and aggressor side of the most recent trade. Unlike Kalshi, Polymarket exposes **price
+and trade methods only** — there are **no** market-lifecycle (`status` / `result`) methods.
+
+**Ticker = outcome-token `asset_id`.** For Polymarket, `args.ticker` is the **outcome token
+`asset_id`** — the long numeric id of a single outcome (e.g. the YES token), **not** the
+top-level Polymarket market id (which is shared by both sides of a binary market). At create
+time the token is validated against Polymarket's live markets; an unknown or inactive token
+is rejected ("was not found or is not active"). Resolve a real, currently-active
+outcome-token id first — never invent or guess ids.
+
+Each method takes exactly one arg, `ticker`:
+
+| Method | Returns | Description |
+|---|---|---|
+| `price` | number in `[0, 1]` | Last traded probability / price for the outcome token |
+| `bid` | number in `[0, 1]` | Best bid for the outcome token (when present on the event) |
+| `ask` | number in `[0, 1]` | Best ask for the outcome token (when present on the event) |
+| `size` | number ≥ 0 | Size of the last-trade update (when present on the event) |
+| `side` | enum `"BUY"` / `"SELL"` | Aggressor side of the last trade, in uppercase |
+
+The feed mixes several event subtypes (`price_change`, `best_bid_ask`, `last_trade_price`,
+`book`), and **not every field updates on every event** — `best_bid_ask` updates `bid`/`ask`
+only, while `last_trade_price` updates `price`/`size`/`side` only. Design a condition around
+the specific field you need rather than assuming all fields move together.
+
+**Operators by method** (restricted per method):
+
+| Method(s) | Allowed operators |
+|---|---|
+| `price`, `bid`, `ask` | `>` `<` `>=` `<=` `==` `!=` `crosses_above` `crosses_below` |
+| `size` | `>` `<` `>=` `<=` `==` `!=` |
+| `side` | `==` `!=` |
+
+`value` must be a **literal** matching the method's type (`0`–`1` for `price`/`bid`/`ask`,
+≥ 0 for `size`, uppercase `"BUY"` / `"SELL"` for `side`). Polymarket conditions **do not
+support dynamic (field-vs-field) values** — dynamic Polymarket targets are rejected at
+validation.
+
+```json
+{
+  "source": "polymarket",
+  "method": "price",
+  "args": { "ticker": "115556263888245616435851357148058235707004733438163639091106356867234218207169" },
+  "operator": "crosses_below",
+  "value": 0.4
+}
+```
+
+Standard EQL limits apply to both prediction-market sources: combinable with other sources
+inside `AND`/`OR` groups, up to depth 3 and 10 leaf conditions. Full method tables and
+example automations:
+[Prediction Markets → Polymarket](https://docs.elfa.ai/auto/prediction-markets#polymarket).
 
 **Supported operators:** `>`, `<`, `>=`, `<=`, `==`, `!=`, `crosses_above`, `crosses_below`
 
@@ -1280,6 +1409,51 @@ Full method tables, value enums, and example automations:
   "conditions": { "AND": [{ "source": "kalshi", "method": "result", "args": { "ticker": "KXBTC-26APR0803-T77799.99" }, "operator": "==", "value": "yes" }] },
   "actions": [{ "stepId": "step_1", "type": "llm", "params": { "objective": "This Kalshi market just resolved YES. Write a concise recap explaining what resolved and what to watch next." } }],
   "expiresIn": "48h"
+}
+```
+
+**12) Prediction Market — Polymarket (outcome-token price crossing):**
+
+```json
+{
+  "title": "Polymarket outcome crosses 60%",
+  "description": "Fire when the outcome token's last traded price crosses up through 0.60, signalling the market now expects this outcome.",
+  "conditions": { "AND": [{ "source": "polymarket", "method": "price", "args": { "ticker": "115556263888245616435851357148058235707004733438163639091106356867234218207169" }, "operator": "crosses_above", "value": 0.6 }] },
+  "actions": [{ "stepId": "step_1", "type": "webhook", "params": { "url": "https://your-runner.example/auto/events" } }],
+  "expiresIn": "48h"
+}
+```
+
+**13) Recurring trigger (`repeat`):**
+
+Re-fire on the plan's own condition instead of a fixed cron cadence — notify every time BTC
+crosses down through 60k, rate-limited to once per hour, capped at 10 fires. Note the
+safer-pattern choices: `crosses_below` (reacts to the crossing edge, not a value sitting
+below the line) plus a `1h` cooldown and a low `maxTriggers` ceiling.
+
+```json
+{
+  "title": "Notify when BTC crosses below 60k",
+  "description": "Recurring risk alert: fire each time BTC price crosses down through 60000, no more than once per hour, up to 10 times.",
+  "conditions": { "AND": [{ "source": "price", "method": "current", "args": { "symbol": "BTC", "exchange": "hyperliquid" }, "operator": "crosses_below", "value": 60000 }] },
+  "actions": [{ "stepId": "step_1", "type": "notify", "params": { "message": "BTC dipped below 60k again" } }],
+  "expiresIn": "7d",
+  "repeat": { "cooldown": "1h", "maxTriggers": 10 }
+}
+```
+
+**14) Calendar schedule (`cron.schedule`):**
+
+Run on a wall-clock schedule — every weekday at 09:00 New York time. Direct EQL/API path
+only (Builder Chat support pending).
+
+```json
+{
+  "title": "Weekday 9am NY: market open recap",
+  "description": "Every weekday at 09:00 America/New_York, run an LLM market-open recap.",
+  "conditions": { "AND": [{ "source": "cron", "method": "schedule", "args": { "expression": "0 9 * * 1-5", "timezone": "America/New_York" }, "operator": "==", "value": true }] },
+  "actions": [{ "stepId": "step_1", "type": "llm", "params": { "objective": "Give a concise market-open recap for BTC/ETH/SOL and flag overnight risk shifts" } }],
+  "expiresIn": "7d"
 }
 ```
 
@@ -1613,6 +1787,10 @@ issue, not a capability gap. Iterate on Validate instead of abandoning the query
 | `kalshi` ticker not open (`EQL_INVALID_ARG_VALUE` on `args.ticker`) | Ticker is not a currently-open Kalshi market (closed/settled/unknown) | Resolve a currently-open full ticker and re-validate; don't guess tickers |
 | `kalshi` invalid enum / operator | Enum `value` outside its set, or operator not in the method's allowlist (e.g. `crosses_above` on `trade_size`) | Use the per-method operator allowlists and enum sets from the `kalshi` source reference |
 | `kalshi` `is_block_trade` type error | `value` passed as a string instead of a JSON boolean | Use JSON `true` / `false`, not `"true"` / `"false"` |
+| `polymarket` ticker not found / not active | `args.ticker` is not a live Polymarket outcome token (`asset_id`) — unknown or inactive | Resolve a currently-active outcome-token `asset_id` and re-validate; don't guess ids |
+| `polymarket` invalid operator / dynamic value | Operator not in the method's allowlist (e.g. `crosses_above` on `size`, `>` on `side`), or a dynamic (field-vs-field) `value` was used | Use the per-method operator allowlists; use a literal `value` (dynamic values are unsupported for `polymarket`) |
+| `cron.schedule` cadence too fast | Minute field isn't a single fixed value (e.g. `*/15 * * * *`), or a sub-hour cadence | Use a single fixed minute — see the `cron.schedule` allowed/not-allowed examples |
+| `EQL_INVALID_REPEAT` | `repeat` was used on a trade action, or combined with a recurring cron condition (`cron.every` / `cron.schedule`) | Drop `repeat` from trade-action plans; for recurring cron, remove `repeat` (cron already recurs) |
 | Dynamic value in action params | Dynamic values only allowed in condition `value` | Move dynamic reference into condition; keep action params literal |
 
 Cross-operator semantics: `crosses_above` = previous `<` threshold AND current `>=` threshold.
