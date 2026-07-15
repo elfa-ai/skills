@@ -64,12 +64,21 @@ what the user wants.
 
 ## GMX Masters (competition)
 
-4-week competition by Elfa and GMX, 15 June 16:00 UTC – 12 July 15:59 UTC 2026, 15,000
-USDC across four tracks: Auto Trading ($10,000, ranked by percentage return on capital),
-Alpha Pool ($3,000, best strategies shared on X), Subscriber Bonus ($1,000), Partner Bonus
-($1,000). Strategies run on Elfa Auto executing on GMX — exactly the flow above.
-Leaderboard is public, updates every 2 hours. Rules source of truth:
+4-week competition by Elfa and GMX, 15 June 16:00 UTC – 12 July 15:59 UTC 2026 (shown in the
+docs as 16 June – 12 July, UTC+8 — same instants), 15,000 USDC across four tracks: Auto
+Trading ($10,000, ranked by percentage return on capital), Alpha Pool ($3,000, best
+strategies shared on X), Subscriber Bonus ($1,000), Partner Bonus ($1,000). Strategies run on
+Elfa Auto executing on GMX — exactly the flow above. Leaderboard is public, updates every 2
+hours. Prizes pay out at the end of the competition, **except** the Subscriber Draw, which
+pays 1 month after the participant's payment. Rules source of truth:
 <https://docs.elfa.ai/gmx-trading-competition/faq> — the live docs win over this skill.
+
+**Concurrent Volume Competition (separate pop-up, no registration).** Running alongside GMX
+Masters is a $1,500 volume competition — you're **auto-enrolled** on any GMX trade through
+Elfa (no GMX Masters signup required). Prizes: 1st $1,000, 2nd 3-month Max membership, 3rd
+1-month Max membership, plus a $500 raffle for any trader with >$500k GMX volume via Elfa.
+All trades must execute on GMX through Elfa. Details:
+<https://docs.elfa.ai/volume-competition/faq>.
 
 ### The one rule that shapes everything
 
