@@ -7,9 +7,11 @@ description: >
   EQL queries, trigger pipelines, and agent workflows that react to market conditions.
   Auto can also place live perp trades on Hyperliquid and GMX (market/limit orders with
   TP/SL) when a condition fires, trigger on Kalshi and Polymarket prediction markets,
-  re-fire recurring plans via `repeat`, run calendar schedules via `cron.schedule`, and
-  tracks crypto plus HIP-3 assets (tokenized equities, commodities, FX). Supports API-key
-  calls and x402 pay-per-request USDC on Base.
+  trigger on funding rates, liquidation cascades, and the Fear & Greed index, re-fire
+  recurring plans via `repeat` (including trade actions), run calendar schedules via
+  `cron.schedule`, and trade crypto plus HIP-3 assets (equities, indices, commodities, FX,
+  pre-IPO — 24/7). Supports API-key calls and x402 pay-per-request USDC on Base, Arbitrum,
+  Polygon, or Avalanche.
 ---
 
 # Elfa API Skill
@@ -81,8 +83,8 @@ Elfa supports two independent ways to authenticate requests:
 
 Both modes access the same data. The only difference is how you authenticate:
 - **API key** — register at https://go.elfa.ai/claude-skills, get 1,000 free credits.
-- **x402** — pay per request with USDC on Base. No registration, no API key. Currently in beta
-  with a 70% discount on Auto endpoints.
+- **x402** — pay per request with USDC on Base, Arbitrum, Polygon, or Avalanche. No
+  registration, no API key. Currently in beta with a 70% discount on Auto endpoints.
 
 ### Endpoints at a glance
 
@@ -250,8 +252,9 @@ Use the `bash_tool` to call the Elfa API via curl.
    > **https://go.elfa.ai/claude-skills** — then set it as the `ELFA_API_KEY` environment
    > variable (do not paste it directly into the chat).
    >
-   > **Option B — x402 keyless payments:** Pay per request with USDC on Base — no signup
-   > needed. See the [x402 docs](https://docs.elfa.ai/x402-payments) for setup.
+   > **Option B — x402 keyless payments:** Pay per request with USDC on Base, Arbitrum,
+   > Polygon, or Avalanche — no signup needed. See the
+   > [x402 docs](https://docs.elfa.ai/x402-payments) for setup.
 
    Do not attempt any authenticated API calls without a key or x402 setup. Wait for the user.
 3. **Credential safety:**
@@ -280,8 +283,8 @@ curl -s -H "x-elfa-api-key: $ELFA_API_KEY" "https://api.elfa.ai/v2/aggregations/
 
 ### Step 2b: Making live API calls (x402 keyless mode)
 
-x402 lets any wallet pay per request using USDC on Base — no API key, no registration.
-This is ideal for agents, bots, and programmatic access.
+x402 lets any wallet pay per request using USDC on Base, Arbitrum, Polygon, or Avalanche —
+no API key, no registration. This is ideal for agents, bots, and programmatic access.
 
 **How x402 works:**
 1. Send a request to the `/x402/v2/` version of any endpoint (no auth header).
@@ -300,10 +303,17 @@ This is ideal for agents, bots, and programmatic access.
   advise the user to load it from an environment variable (e.g., `process.env.PRIVATE_KEY`).
 
 **x402 details:**
-- **Chain:** Base (`eip155:8453`)
-- **Currency:** USDC on Base (`0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`)
-- **Status:** Currently in beta
-- **Facilitator:** [xpay.sh](https://xpay.sh/)
+- **Networks:** the server offers every supported network in the 402 response; your client
+  signs on the first one it's registered for. Register the network(s) you hold USDC on.
+- **Scheme:** `exact` (fixed price per request); asset is native Circle USDC (6 decimals).
+- **Status:** Currently in beta.
+
+| Network | Chain ID | USDC Address | Facilitator |
+|---|---|---|---|
+| Base | `eip155:8453` | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` | [xpay.sh](https://xpay.sh), [payai.network](https://facilitator.payai.network) |
+| Arbitrum | `eip155:42161` | `0xaf88d065e77c8cC2239327C5EDb3A432268e5831` | [payai.network](https://facilitator.payai.network) |
+| Polygon | `eip155:137` | `0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359` | [payai.network](https://facilitator.payai.network) |
+| Avalanche | `eip155:43114` | `0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E` | [payai.network](https://facilitator.payai.network) |
 
 **x402 pricing (data endpoints):**
 
@@ -351,6 +361,10 @@ const response = await x402Fetch(
 const data = await response.json();
 ```
 
+To pay on another network, swap the `base` chain import and register that scheme instead —
+e.g. Arbitrum (`arbitrum` from `viem/chains`, `eip155:42161`). Register a scheme for each
+network you want to pay from; the client uses the first one the server also accepts.
+
 **x402 with the Chat endpoint (POST):**
 
 ```javascript
@@ -383,8 +397,9 @@ console.log(data.data.message);
 
 Auto is a managed **condition engine + trigger pipeline** for agents. You describe what to
 watch for (price, technical indicators, LLM-evaluated conditions, scheduled checks,
-prediction-market activity), and Auto evaluates continuously and fires actions when
-conditions resolve to true.
+prediction-market activity, funding rates, liquidation cascades, market sentiment), and Auto
+evaluates continuously and fires actions when conditions resolve to true. Assets are not
+crypto-only — HIP-3 perps cover equities, indices, commodities, FX, and pre-IPO names, 24/7.
 
 Full Auto docs: [docs.elfa.ai/auto/overview](https://docs.elfa.ai/auto/overview)
 
@@ -414,6 +429,10 @@ Pick the condition source by user intent **before** writing condition args:
 | World event intent (ETF approval, exploit, sanctions, etc.) | `source: "news"` | `args.text`, `args.minConfidence` (use `80` if user gives no threshold) |
 | Prediction-market move/lifecycle on a named open Kalshi market | `source: "kalshi"` | `method` (e.g. `yes_price`, `status`, `result`), `args.ticker` (a currently-open Kalshi market), `operator`/`value` per the per-method allowlists |
 | Prediction-market price/trade on a Polymarket outcome token | `source: "polymarket"` | `method` (`price`, `bid`, `ask`, `size`, `side`), `args.ticker` (outcome-token `asset_id`), `operator`/`value` per the per-method allowlists |
+| Perp funding-rate intent (overheated funding, funding flips negative) | `source: "funding"` | `method` (prefer `annualized_rate`), `args.ticker` as `SYMBOL:EXCHANGE` (e.g. `BTC:BINANCE`) |
+| Liquidation-flow intent (cascade, long/short flush) | `source: "liquidation"` | `method` (e.g. `total_usd_5m`, `total_pct_oi_1h`), `args.ticker` as `SYMBOL:EXCHANGE` |
+| Market-wide sentiment (fear/greed regime) | `source: "fear_greed"` | `method` (`value` or `classification`), empty `args: {}` |
+| Real-world catalyst moving an equity/index/commodity (rate decision, CPI, earnings) | the catalyst's own source (`kalshi` / `polymarket` / `news` / `price`) + a HIP-3 `symbol` in the action | Pick the catalyst source, then bridge to the asset class it moves — see [Catalyst Triggers](https://docs.elfa.ai/auto/catalyst-triggers) |
 | Fuzzy world-state predicate not naturally expressible as a post or event | `source: "llm"` | `method: "athena_condition"`, `args.query`, `args.period` (`>= 1h`) |
 
 When the prompt is account-anchored, **start with `tweet`** — do not route to `news` or `llm` first. When the prompt is event-anchored without a specific account, start with `news`. When the trigger maps to a concrete prediction market you can name (a Kalshi ticker or a Polymarket outcome-token id), use `kalshi` / `polymarket` (prefer them over `llm` for supported methods). Use `llm` (`athena_condition`) only when the predicate cannot reasonably be matched against a post, event, or named prediction market.
@@ -431,6 +450,8 @@ When the prompt is account-anchored, **start with `tweet`** — do not route to 
 - User wants **account-anchored social triggers** ("notify me when @cz_binance posts that Binance Alpha is listing a new token") — use **Signal: X/Twitter Post** (`source: "tweet"`)
 - User wants **event-driven triggers** ("alert me when SEC approves a spot ETH ETF") — use **Signal: Event** (`source: "news"`)
 - User wants **prediction-market triggers** ("alert when this Kalshi market's YES probability crosses 60%", "notify when the market settles YES", "alert when this Polymarket outcome trades above 60c") — use **Prediction Markets** (`source: "kalshi"` or `source: "polymarket"`)
+- User wants **funding / liquidation / sentiment triggers** ("alert when BTC funding flips negative", "notify on an ETH liquidation cascade", "alert when Fear & Greed drops below 20") — use `source: "funding"` / `"liquidation"` / `"fear_greed"`
+- User wants to **trade a macro catalyst on stocks/indices/commodities** ("go long the S&P when the market prices a Fed cut", "buy gold if CPI runs hot") — fire on the catalyst source and execute on a HIP-3 perp (24/7). See [Catalyst Triggers](https://docs.elfa.ai/auto/catalyst-triggers)
 
 #### Auto access models
 
@@ -613,7 +634,7 @@ existing queries/sessions may become inaccessible.
 
 > Reference USD values for Create: baseline `$0.045`, fast call `+$0.045`, expert call `+$0.162`. Use `/queries/validate` to preview exact cost before committing.
 
-**x402 mode (`/x402/v2/auto/*`) — 70% discount, limited-time, pay-per-request in USDC on Base:**
+**x402 mode (`/x402/v2/auto/*`) — 70% discount, limited-time, pay-per-request in USDC on Base, Arbitrum, Polygon, or Avalanche:**
 
 | Operation | Credits | USDC Cost |
 |---|---|---|
@@ -873,7 +894,17 @@ sibling — by default a plan is one-shot; see **Repeat** below):
 - Nest groups up to depth 3, max 10 leaf conditions
 - Multi-symbol: a single query can require BTC AND ETH AND SOL conditions jointly
 
-**Allowed `expiresIn` values:** `1h`, `2h`, `4h`, `8h`, `12h`, `24h`, `2d`, `3d`, `5d`, `7d`
+**Allowed `expiresIn` values:** `1h`, `2h`, `4h`, `8h`, `12h`, `24h`, `48h` (2d), `72h` (3d),
+`120h` (5d), `168h` (7d), `240h` (10d), `336h` (14d), `504h` (21d), `720h` (30d — hard max).
+**Prefer `24h`–`72h`** — signals decay and short windows force re-evaluation. Only reach for
+`240h`–`720h` on slow structural theses (token unlocks, options expiries, monthly
+copy-trading), never on short-timeframe TA/scalps.
+
+**Plan limits (active plans per account):** an account can only hold so many **active** plans
+at once, by API key tier — Free `2`, Chill `10`, Grow `50`, PAYG/Enterprise unlimited. A hard
+ceiling of **100 active plans** applies regardless of tier; exceeding either cap returns
+`409`. Only *active* plans count — expired/cancelled/terminal plans free capacity, so
+cancelling stale plans (or choosing a shorter `expiresIn`) is the fastest way to make room.
 
 **Repeat (`repeat`) — recurring plans on their own conditions:**
 
@@ -902,11 +933,20 @@ Both fields are **mandatory** when `repeat` is present:
 - **`maxTriggers`** counts how many times the plan **fires** over its lifetime (distinct from the number of action steps). Sanity-check `cooldown × maxTriggers` against `expiresIn` — if there isn't enough runway, the plan expires before reaching the cap. A longer `expiresIn` buys patience through quiet periods; it does **not** raise the fire cap.
 - **Single reset rule.** A `repeat` plan re-fires only once its triggering signal has cleared. **Level** conditions (`price` / `ta` / `llm`-boolean) disarm on fire and re-arm when the whole condition tree next evaluates false; **event** conditions (`tweet.semantic` / `news.semantic`) consume the matched mention and re-fire on the **next distinct** mention.
 
-> **v1 limitations:** `repeat` is **not** supported on trade/order actions (`market_order`,
-> `limit_order`), and it **cannot** be combined with a recurring cron condition
-> (`cron.every` / `cron.schedule`) — both provide recurrence, so combining them is rejected
-> at validation as `EQL_INVALID_REPEAT`. For a fixed-cadence recurring plan, use the cron
-> condition on its own; for a condition-driven recurring plan, use `repeat`.
+> **`repeat` on trade actions places a NEW order every fire.** `repeat` composes with **every**
+> action type, including `market_order` / `limit_order`. On an order action, **each fire opens a
+> new position** — Auto does not net, reconcile, or cancel earlier fires. Three fires = three
+> positions. So `cooldown` and `maxTriggers` are your **position-count controls**, not just an
+> alert rate-limit. `positionSizePercent` recomputes against the then-current account value
+> (it compounds), and `tp` / `sl` / `leverage` attach per order. **Never use `cooldown: "0"`
+> on order actions** — a redelivered trigger could place a second order; any non-zero cooldown
+> closes that window. A failed fire notifies you (`order_failed`), still consumes one
+> `maxTriggers`, and leaves the plan live.
+>
+> **Still rejected:** `repeat` combined with a recurring cron condition (`cron.every` /
+> `cron.schedule`) — both provide recurrence, so combining them fails validation as
+> `EQL_INVALID_REPEAT`. For a fixed-cadence recurring plan, use the cron condition on its own;
+> for a condition-driven recurring plan, use `repeat`.
 
 **Avoiding over-triggering:** the main risk is a condition that keeps flipping true — a
 metric flapping around its threshold, or a chatty account. `cooldown` is your rate-limit
@@ -924,6 +964,8 @@ Recommended starting points:
 | LLM predicate (`llm.athena_condition`) | `≥ period` (min `1h`) | `3`–`5` | The LLM already re-checks on `period` — don't re-alert faster than it re-evaluates. |
 | Event — single / quiet account (`tweet`) | `0`–`15m` | `10`–`20` | Each distinct post is a discrete event; `"0"` is fine unless the account is chatty. |
 | Event — noisy account / broad `news` | `15m`–`1h` | `10`–`20` | A small cooldown collapses a burst of mentions into one alert. |
+| Liquidation cascade (`liquidation`) | `1h`+ | `5`–`10` | Windows decay to zero, so the plan re-arms per cascade; the cooldown stops one long cascade re-alerting. |
+| **Trade / order action** (`market_order`, `limit_order`) | non-zero, `1h`+ | `2`–`5` | These are **positions, not alerts** — `maxTriggers` is the number of orders the plan may place. Never `"0"`. |
 
 **Allowed action types:** `webhook`, `notify`, `telegram_bot`, `llm`, `market_order`, `limit_order`. The `actions` array is **exactly one step** per query — run standalone LLM work with `params.objective`; chain follow-up work via `llm` action with `params.callback.action`, or have your runner fan out from the trigger event.
 
@@ -1218,6 +1260,86 @@ inside `AND`/`OR` groups, up to depth 3 and 10 leaf conditions. Full method tabl
 example automations:
 [Prediction Markets → Polymarket](https://docs.elfa.ai/auto/prediction-markets#polymarket).
 
+**Market-structure source (`funding`) — perp funding rate:**
+
+Trigger on a perp's funding rate — an overheated long bias, a flip to negative, or a
+cross-venue divergence. Funding and liquidation flow often lead the spot price reaction.
+
+**Ticker = composite `SYMBOL:EXCHANGE`** (not `symbol` + `exchange` args). `SYMBOL` is the
+base asset (`BTC`, not `BTCUSDT`); the venue rides in the ticker. Venues: `binance`,
+`hyperliquid`. Examples: `BTC:BINANCE`, `ETH:HYPERLIQUID`.
+
+| Method | Args | Returns | Operators | Description |
+|---|---|---|---|---|
+| `annualized_rate` | `ticker` | number | all 8 | **Canonical.** Funding as annualized percent (APR): `32.85` = 32.85% APR. Positive = longs pay shorts. |
+| `interval_rate` | `ticker` | number | all 8 | Percent per settlement interval. |
+| `interval_hours` | `ticker` | number | level only | Settlement interval in hours: `8` (Binance) or `1` (Hyperliquid). Venue metadata. |
+| `exchange` | `ticker` | enum | `==` / `!=` | The venue: `"binance"` or `"hyperliquid"`. |
+
+- **Prefer `annualized_rate`** — Binance settles every 8h and Hyperliquid every 1h, so the
+  same `interval_rate` threshold means different things per venue; annualizing removes that
+  trap. "Funding flips negative" is exactly `annualized_rate crosses_below 0`.
+- "level only" = `>` `<` `>=` `<=` `==` `!=` (no `crosses_*`).
+- HIP-3 dex-prefixed symbols (`xyz:TSLA`) are **rejected** here (`EQL_INVALID_ARG_VALUE`,
+  `details.hip3: true`) — the funding feed never publishes keys for them.
+
+```json
+{ "source": "funding", "method": "annualized_rate", "args": { "ticker": "BTC:BINANCE" }, "operator": "crosses_below", "value": 0 }
+```
+
+**Market-structure source (`liquidation`) — liquidation flow:**
+
+Trigger on liquidation flow in a trailing window — a cascade crossing a USD threshold, a
+one-sided flush, or liquidations as a share of open interest. Same composite
+`SYMBOL:EXCHANGE` ticker as `funding`. Venues: `binance`, `bybit`, `hyperliquid`.
+
+| Method | Args | Returns | Operators | Description |
+|---|---|---|---|---|
+| `total_usd_1m` / `total_usd_5m` / `total_usd_1h` | `ticker` | number | all 8 | Total USD liquidated in the trailing window. |
+| `long_usd_1m` / `long_usd_5m` / `long_usd_1h` | `ticker` | number | all 8 | Longs liquidated (forced selling). |
+| `short_usd_1m` / `short_usd_5m` / `short_usd_1h` | `ticker` | number | all 8 | Shorts liquidated (forced buying). |
+| `largest_order_usd_1h` | `ticker` | number | all 8 | Single biggest liquidation order in the trailing hour, USD. |
+| `count_1h` | `ticker` | number | level only | Number of liquidation orders in the trailing hour. |
+| `total_pct_oi_1m` / `total_pct_oi_5m` / `total_pct_oi_1h` | `ticker` | number | all 8 | Window total as a **percent of open interest** (compares across symbols). |
+| `exchange` | `ticker` | enum | `==` / `!=` | The venue: `"binance"` / `"bybit"` / `"hyperliquid"`. |
+
+- **Feed quality differs by venue.** Binance is **sampled** (≤1 liquidation/symbol/second) so
+  its values are a **lower bound** and undercount most during the cascades you care about;
+  Bybit and Hyperliquid are **complete** (exact totals). Set a lower threshold on Binance for
+  the same real-world event.
+- **Windows decay to zero** once a cascade subsides, which re-arms the condition — so a
+  `repeat` plan fires **once per cascade**, not once ever.
+- `total_pct_oi_*` magnitudes are **small**: ~0.1%/hr is already heavy for a major; start
+  around `0.5`–`1` (percent), not raw fractions. HIP-3 symbols are **rejected** here too.
+
+```json
+{ "source": "liquidation", "method": "total_usd_5m", "args": { "ticker": "ETH:BYBIT" }, "operator": "crosses_above", "value": 500000 }
+```
+
+Full method tables, feed-quality table, and examples:
+[Funding and Liquidations](https://docs.elfa.ai/auto/funding-and-liquidations).
+
+**Market-sentiment source (`fear_greed`) — Crypto Fear & Greed Index:**
+
+Trigger on the market-wide Crypto Fear & Greed Index. This is a **keyless** source — one
+global reading, no per-market identity — so its methods take **no ticker**. Pass
+`args: {}`.
+
+| Method | Args | Returns | Operators | Description |
+|---|---|---|---|---|
+| `value` | _(none)_ | number | all 8 | Index score, integer `0`–`100` (0 = extreme fear, 100 = extreme greed). |
+| `classification` | _(none)_ | enum | `==` / `!=` | Bucket label (see below). |
+
+- `classification` value ∈ `"Extreme fear"` (`0–19`), `"Fear"` (`20–39`), `"Neutral"`
+  (`40–59`), `"Greed"` (`60–79`), `"Extreme greed"` (`80–100`). Bands map to fixed `value`
+  ranges — **prefer `value`** for a precise threshold.
+- Updates ~every 15 min. A `crosses_*` leaf needs a prior reading, so it can only fire on the
+  **second** reading after activation. No dynamic values.
+
+```json
+{ "source": "fear_greed", "method": "value", "args": {}, "operator": "crosses_below", "value": 20 }
+```
+
 **Supported operators:** `>`, `<`, `>=`, `<=`, `==`, `!=`, `crosses_above`, `crosses_below`
 
 **Dynamic comparisons:** `value` can reference another live data source instead of a literal:
@@ -1457,6 +1579,55 @@ only (Builder Chat support pending).
 }
 ```
 
+**15) Funding flip (`funding`):**
+
+Fire when Binance BTC funding turns negative — shorts start paying longs (crowded-short
+signal). Note the composite `SYMBOL:EXCHANGE` ticker and venue-comparable `annualized_rate`.
+
+```json
+{
+  "title": "BTC funding flips negative",
+  "description": "Shorts are now paying longs on Binance BTC — a crowded-short signal worth reviewing.",
+  "conditions": { "AND": [{ "source": "funding", "method": "annualized_rate", "args": { "ticker": "BTC:BINANCE" }, "operator": "crosses_below", "value": 0 }] },
+  "actions": [{ "stepId": "step_1", "type": "notify", "params": { "message": "BTC funding on Binance flipped negative" } }],
+  "expiresIn": "7d"
+}
+```
+
+**16) Liquidation cascade (`liquidation` + `repeat`):**
+
+Fire each time ETH liquidations cross $500k in a 5-minute window. Windows decay to zero once
+a cascade subsides, so with `repeat` this fires **once per cascade**.
+
+```json
+{
+  "title": "ETH liquidation cascade (5m > $500k)",
+  "description": "Alert on each distinct ETH liquidation cascade on Bybit, capped at 10 alerts.",
+  "conditions": { "AND": [{ "source": "liquidation", "method": "total_usd_5m", "args": { "ticker": "ETH:BYBIT" }, "operator": "crosses_above", "value": 500000 }] },
+  "actions": [{ "stepId": "step_1", "type": "webhook", "params": { "url": "https://your-runner.example/auto/events" } }],
+  "expiresIn": "7d",
+  "repeat": { "cooldown": "1h", "maxTriggers": 10 }
+}
+```
+
+**17) Catalyst → equity/index trade (HIP-3):**
+
+The prediction-market-to-perp bridge: when a Fed-decision market reprices, take a position in
+the S&P perp — including overnight and at weekends, when cash equities are closed. `xyz:SP500`
+is a HIP-3 market on Hyperliquid; each `repeat` fire opens a **new** position, so `maxTriggers`
+is a position count. Resolve a real open Kalshi ticker first — don't guess.
+
+```json
+{
+  "title": "Fed cut odds → long S&P",
+  "description": "When the market prices a cut as more likely than not, go long the S&P perp.",
+  "conditions": { "AND": [{ "source": "kalshi", "method": "yes_price", "args": { "ticker": "<an open Kalshi Fed-decision market ticker>" }, "operator": "crosses_above", "value": 0.6 }] },
+  "actions": [{ "stepId": "step_1", "type": "market_order", "params": { "exchange": "hyperliquid", "symbol": "xyz:SP500", "side": "buy", "amount": "250" } }],
+  "expiresIn": "168h",
+  "repeat": { "cooldown": "4h", "maxTriggers": 3 }
+}
+```
+
 #### Poll response shape
 
 `GET /v2/auto/queries/{queryId}` (and the x402 `POST` equivalent) returns:
@@ -1631,6 +1802,15 @@ curl -X POST "https://api.telegram.org/bot<BOT_TOKEN>/sendMessage" \
   -d '{"chat_id": "<CHAT_ID>", "text": "Auto trigger fired for BTC RSI"}'
 ```
 
+**Direct chats, groups, and supergroups:** `telegram_bot` delivers to private chats, groups,
+and supergroups. **Channels are not supported** and are rejected at create time. Two gotchas
+for groups: (1) **group chat IDs are negative** (`-1001234567890`) — copy verbatim from
+`getUpdates`, including the leading `-`; (2) **the bot must be able to post** — at create time
+Auto checks the bot's membership/permissions, and if it can't post, create fails with
+`Telegram bot cannot send messages in this chat (check its permissions)`. If a group is later
+upgraded to a supergroup (new chat ID), Auto detects the migration, updates the stored ID, and
+retries — no action needed.
+
 #### Agent runner — reference architecture
 
 Auto handles query evaluation + event emission. Your runner handles event ingestion,
@@ -1766,6 +1946,8 @@ Full detail: [Notifications](https://docs.elfa.ai/auto/notifications) |
 | SSE disconnect/reconnect loops | No retry/backoff or unstable consumer | Add reconnect backoff + heartbeat monitoring |
 | Missing triggers after some time | Query expired or was cancelled | Poll status; check `expiresIn`, `status`, `latestEvaluation` |
 | Signature timestamp rejected | Runner clock skew | Sync clock (NTP); enforce bounded replay window |
+| `Telegram bot cannot send messages in this chat` at create | Bot isn't in the group, or the group revokes `can_send_messages` for it | Add the bot to the chat and grant send permission (or make it an admin), then retry |
+| Telegram create fails for a group | `chatId` missing the leading `-`, or the target is a channel | Group IDs are negative (`-1001234567890`); channels are not supported |
 
 #### Validation errors — next action table
 
@@ -1790,7 +1972,10 @@ issue, not a capability gap. Iterate on Validate instead of abandoning the query
 | `polymarket` ticker not found / not active | `args.ticker` is not a live Polymarket outcome token (`asset_id`) — unknown or inactive | Resolve a currently-active outcome-token `asset_id` and re-validate; don't guess ids |
 | `polymarket` invalid operator / dynamic value | Operator not in the method's allowlist (e.g. `crosses_above` on `size`, `>` on `side`), or a dynamic (field-vs-field) `value` was used | Use the per-method operator allowlists; use a literal `value` (dynamic values are unsupported for `polymarket`) |
 | `cron.schedule` cadence too fast | Minute field isn't a single fixed value (e.g. `*/15 * * * *`), or a sub-hour cadence | Use a single fixed minute — see the `cron.schedule` allowed/not-allowed examples |
-| `EQL_INVALID_REPEAT` | `repeat` was used on a trade action, or combined with a recurring cron condition (`cron.every` / `cron.schedule`) | Drop `repeat` from trade-action plans; for recurring cron, remove `repeat` (cron already recurs) |
+| `EQL_INVALID_REPEAT` | `repeat` was combined with a recurring cron condition (`cron.every` / `cron.schedule`) — both provide recurrence. `repeat` **is** allowed on trade actions | Remove `repeat` for recurring cron (cron already recurs), or drop the cron condition |
+| `EQL_INVALID_ARG_VALUE` with `details.hip3: true` | A HIP-3 (dex-prefixed) symbol was used on a `funding` / `liquidation` condition — those feeds don't publish HIP-3 keys | Use a plain base symbol (`BTC:BINANCE`). HIP-3 stays valid on `price`/`ta` and trade actions |
+| Unknown symbol in a composite ticker | Symbol not listed on that venue's perp catalog (often a naming mismatch) | Check the venue's own base-symbol convention (`1000PEPE` on Binance/Bybit vs `KPEPE` on Hyperliquid) |
+| `SYMBOL_CATALOG_UNAVAILABLE` (HTTP `503`) | Market catalog was momentarily unreachable, so the symbol couldn't be checked — validation fails closed | Retry after the interval in the `Retry-After` header; this is transient — do not reshape the query |
 | Dynamic value in action params | Dynamic values only allowed in condition `value` | Move dynamic reference into condition; keep action params literal |
 
 Cross-operator semantics: `crosses_above` = previous `<` threshold AND current `>=` threshold.
@@ -1837,23 +2022,41 @@ Drafts are API-key-mode only. Not available via x402.
 
 #### Symbols (tracking vs execution)
 
-Symbols are plain uppercase tickers for crypto majors and on-chain tokens
-(`BTC`, `ETH`, `SOL`, `HYPE`, long-tail tokens). **HIP-3 assets** (tokenized equities,
-commodities, FX/indices) use a provider-prefixed format `<provider>:<base_symbol>`:
+Auto is **not crypto-only.** Crypto majors and on-chain tokens are plain uppercase tickers
+(`BTC`, `ETH`, `SOL`, `HYPE`, long-tail tokens). **HIP-3 assets** on Hyperliquid — tokenized
+equities, indices, commodities, FX, and pre-IPO names — use a **DEX-prefixed** form
+`<dex>:<SYMBOL>` and trade **24/7**, even when the underlying cash market is closed.
+
+**Two DEX prefixes matter in practice:** `xyz` lists nearly everything and carries almost all
+the volume; `mkts` lists a smaller overlapping set. Hyperliquid hosts other HIP-3 DEXs whose
+markets are **dormant** (listed but not trading) — Auto **rejects** them exactly like a typo
+(`EQL_INVALID_SYMBOL`). A symbol being listed on Hyperliquid is **not** enough; only the
+liquid listing is usable (`GOLD` appears on six DEXs). A **bare** HIP-3 symbol is rejected —
+`{"symbol": "GOLD"}` fails with `EQL_INVALID_SYMBOL`. Only plain crypto tickers work without a
+prefix (they live on Hyperliquid's main DEX).
 
 | Class | Examples |
 |---|---|
-| Crypto majors | `BTC`, `ETH`, `SOL`, `HYPE` |
+| Crypto majors | `BTC`, `ETH`, `SOL`, `HYPE` (no prefix — main DEX) |
 | On-chain / long-tail tokens | `RAVE`, `TAO`, niche memes |
-| Tokenized equities (HIP-3) | `xyz:TSLA`, `xyz:NVDA`, `vntl:SPACEX` |
-| Commodities (HIP-3) | `xyz:WTIOIL`, `flx:OIL`, `flx:GOLD` |
-| FX / indices (HIP-3) | `xyz:EURUSD`, `xyz:USDJPY`, `flx:USA500` |
+| Indices (HIP-3) | `xyz:SP500`, `xyz:XYZ100` (Nasdaq 100), `xyz:JP225`, `mkts:US500`, `mkts:USTECH` |
+| Sector / country baskets (HIP-3) | `xyz:SMH` (semis), `xyz:XLE` (energy), `xyz:EWY`, `xyz:EWJ` |
+| Equities — mega-cap (HIP-3) | `xyz:NVDA`, `xyz:TSLA`, `xyz:AAPL`, `xyz:MSFT`, `xyz:GOOGL`, `xyz:META` |
+| Equities — semis / high-beta (HIP-3) | `xyz:AMD`, `xyz:TSM`, `xyz:ARM`, `xyz:COIN`, `xyz:MSTR`, `xyz:PLTR` |
+| Pre-IPO / private (HIP-3) | `xyz:SPCX` (SpaceX), `xyz:ZHIPU`, `xyz:MINIMAX` |
+| Commodities (HIP-3) | `xyz:CL` (WTI crude), `xyz:BRENTOIL`, `xyz:NATGAS`, `xyz:GOLD`, `xyz:SILVER`, `xyz:COPPER` |
+| FX (HIP-3) | `xyz:EUR`, `xyz:JPY`, `xyz:GBP` |
 
-Provider prefixes (`xyz`, `flx`, `vntl`, and others) are open-ended — the examples above are
-not exhaustive. **Symbol translation:** when you see a pair-style market name, drop the quote
-currency and prefix with the provider — e.g. `TSLA-USDC` on `xyz` → `xyz:TSLA`; `OIL-USDH` on
-`flx` → `flx:OIL`; `OPENAI-USDH` on `vntl` → `vntl:OPENAI`. Standard crypto tickers stay bare
-(`BTC` → `BTC`).
+**Illustrative, not exhaustive — and listings change.** Markets are added and go dormant.
+Never hardcode this list: confirm any HIP-3 symbol with
+`GET /v2/auto/validate-symbol/{exchange}/{symbol}` before building on it, and read a rejection
+as "that market is dead", not "Auto is missing the asset". HIP-3 markets are tradable on
+**`hyperliquid` only** — a HIP-3 symbol on `gmx` is rejected with `EQL_INVALID_SYMBOL`.
+
+**Composite tickers (`funding` / `liquidation` only):** those two sources do **not** take a
+`symbol` + `exchange` arg — they take a single `SYMBOL:EXCHANGE` ticker (e.g. `BTC:BINANCE`,
+`ETH:HYPERLIQUID`, `SOL:BYBIT`). Use each venue's own base-symbol convention: `1000PEPE` on
+Binance/Bybit vs `KPEPE` on Hyperliquid. HIP-3 symbols are rejected for these two sources.
 
 **Tracking vs execution differ:**
 - **Tracking** (conditions, alerts, webhooks) covers DEX/on-chain assets — effectively
@@ -1865,7 +2068,8 @@ currency and prefix with the provider — e.g. `TSLA-USDC` on `xyz` → `xyz:TSL
   The same check also validates symbols for `price`/`ta` data sources, not just execution.
   Non-tradable symbols still work for tracking.
 
-Full reference: [Symbols](https://docs.elfa.ai/auto/symbols).
+Full reference: [Symbols](https://docs.elfa.ai/auto/symbols) and
+[Catalyst Triggers](https://docs.elfa.ai/auto/catalyst-triggers).
 
 #### Trade execution (`market_order` / `limit_order`)
 
@@ -1899,6 +2103,22 @@ order's reference price — mark price for `market_order`, limit price for `limi
 | Minimum `amount` | 10 USDC | none |
 | `reduceOnly` | supported | rejected |
 | `marginType` | supported | rejected |
+| HIP-3 markets (equities, indices, commodities, FX) | supported | not listed (rejected) |
+
+**Trading HIP-3 markets:** order actions are not limited to crypto. Any HIP-3 market
+(`xyz:SP500`, `xyz:NVDA`, `xyz:GOLD`, `xyz:CL`, `xyz:SPCX`) is tradable through the same
+`market_order` / `limit_order` schema using its DEX-prefixed symbol — **`hyperliquid` only**
+(the same order with `"exchange": "gmx"` is rejected `EQL_INVALID_SYMBOL`). They trade 24/7,
+including when the underlying cash market is halted; max leverage is per-market and the `10`
+USDC minimum notional still applies.
+
+**Catalyst pattern (prediction market → asset it moves):** a prediction-market condition
+doesn't have to end the plan — it can be the trigger for a position in the asset that catalyst
+moves. A Kalshi Fed-decision leaf (`yes_price crosses_above 0.6`) can fire a `market_order` on
+`xyz:SP500` at 3am on a Sunday, while cash equities are shut. Bridge on **asset class** (rates
+→ indices/mega-cap/metals/FX; earnings → mega-cap/semis; a named commodity → that commodity),
+and use `maxTriggers` as a hard circuit breaker. Full guide:
+[Catalyst Triggers](https://docs.elfa.ai/auto/catalyst-triggers).
 
 Trade fees: Elfa charges **0.05% per trade**; the venue's own fees also apply (e.g.
 Hyperliquid base fee scales with 14-day volume).
