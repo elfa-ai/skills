@@ -5,8 +5,9 @@ description: >
   trending tokens, narratives, mentions, smart account stats, token news, trending contract
   addresses, AI market chat, integration examples, curl/code snippets, automated alerts,
   EQL queries, trigger pipelines, and agent workflows that react to market conditions.
-  Auto can also place live perp trades on Hyperliquid and GMX (market/limit orders with
-  TP/SL) when a condition fires, trigger on Kalshi and Polymarket prediction markets,
+  Auto can also place live perp trades on Hyperliquid, GMX, Binance, and Pacifica
+  (market/limit orders, with TP/SL on Hyperliquid and GMX) when a condition fires, trigger
+  on Kalshi and Polymarket prediction markets,
   trigger on funding rates, liquidation cascades, and the Fear & Greed index, re-fire
   recurring plans via `repeat` (including trade actions), run calendar schedules via
   `cron.schedule`, and trade crypto plus HIP-3 assets (equities, indices, commodities, FX,
@@ -131,7 +132,8 @@ _Query lifecycle:_
 | `/v2/auto/queries/:queryId` | GET | Poll query status and executions (resolves query or draft) | API key |
 | `/v2/auto/queries/:queryId/cancel` | POST | Cancel an `active` query (returns `409` if status is terminal) | Conditional |
 | `/v2/auto/queries/:queryId` | DELETE | Delete a terminal query — only when status is `triggered` / `expired` / `cancelled` / `failed` (returns `409` otherwise; active queries must be cancelled first) | Conditional |
-| `/v2/auto/queries/:queryId/stream` | GET | Stream notifications via SSE | API key |
+| `/v2/auto/queries/stream` | GET | Stream notifications for **all** your queries on one connection (API-key only — not agent/x402) | API key |
+| `/v2/auto/queries/:queryId/stream` | GET | Stream notifications for a single query via SSE | API key |
 
 _Query drafts (editable, not yet active):_
 
@@ -185,13 +187,14 @@ _Other:_
 | `/x402/v2/auto/queries/:queryId/sessions` | POST | List LLM sessions (POST, not GET) |
 | `/x402/v2/auto/queries/:queryId/sessions/:sessionId` | POST | Get LLM session details (POST, not GET) |
 
-> **Note on x402 Auto scope.** Trade execution actions are not available via x402. Exchange connections, drafts, executions, and the terminal-query DELETE endpoint are API-key-mode only. x402 Auto covers the core monitoring lifecycle (chat, validate, create, poll, cancel, stream, sessions).
+> **Note on x402 Auto scope.** Trade execution actions are not available via x402. Exchange connections, drafts, executions, and the terminal-query DELETE endpoint are API-key-mode only. x402 Auto covers the core monitoring lifecycle (chat, validate, create, poll, cancel, stream, sessions). The account-wide stream `GET /v2/auto/queries/stream` is **not** exposed on x402 — x402 (and agent identities) get the per-query stream only.
 
 #### Trade endpoints (Direct Execution)
 
 Trade is **direct, synchronous** order execution — one request, one order, no condition
-engine. Same `x-elfa-api-key` + HMAC auth and same venues (`hyperliquid`, `gmx`) as Auto;
-they differ only in _when_ the order fires. Trade is **API-key mode only** (no x402). See
+engine. Same `x-elfa-api-key` + HMAC auth as Auto, but a narrower venue set: Trade executes
+on `hyperliquid` and `gmx` only, while Auto additionally supports `binance` and `pacifica`.
+They differ mainly in _when_ the order fires. Trade is **API-key mode only** (no x402). See
 [Trade docs](https://docs.elfa.ai/trade/overview) for full details.
 
 All endpoints are `POST` under `/v2/trade`. HMAC is required on every **write**; previews
@@ -976,7 +979,7 @@ Recommended starting points:
 | `notify` | `message` (1–1000 chars) | — |
 | `webhook` | `url` (https only, allowlisted host) | `allNotifications` (default `false`) |
 | `telegram_bot` | `botToken`, `chatId` | `allNotifications` (default `false`) |
-| `market_order` / `limit_order` | `exchange` (`hyperliquid` / `gmx`), `symbol`, `side` (`buy` / `sell`), and exactly one of `size` / `amount` / `positionSizePercent` (+ `price` for limit) | `reduceOnly`, `leverage`, `marginType` (`cross` / `isolated`), `tp`, `sl` |
+| `market_order` / `limit_order` | `exchange` (`hyperliquid` / `gmx` / `binance` / `pacifica`), `symbol`, `side` (`buy` / `sell`), and exactly one of `size` / `amount` / `positionSizePercent` (+ `price` for limit) | `reduceOnly`, `leverage`, `marginType` (`cross` / `isolated`), `tp`, `sl` — optional-param support varies by venue; see [Trade execution](#trade-execution-market_order--limit_order) |
 | `llm` | `objective` for standalone LLM work, or `action` + `callback.action` for chained follow-up | `action` ∈ `chat` / `summary` / `macro` / `accountAnalysis` / `tokenDiscovery` / `tokenAnalysis`; `speed` (`fast` / `expert`), per-action extras |
 
 `telegram_bot` does **not** take a `message` field — the message body is auto-composed from the query `title` + `description` + trigger context. Use `notify` (in-app push) when you want to specify the message text yourself. `allNotifications: true` on `webhook` / `telegram_bot` opts the destination into lifecycle notifications (failed/expired/run-failed) in addition to the trigger fire.
@@ -986,10 +989,18 @@ Recommended starting points:
 **Market-data venue (`exchange`) — REQUIRED on every `price` and `ta` condition:**
 
 Every `price` and `ta` condition must include an `exchange` arg that selects which venue's
-market data backs the condition. Allowed values: `hyperliquid`, `gmx` (exact lowercase
-enum). This arg **only affects the data source** of the condition — it is independent of
-where `market_order` / `limit_order` actions execute. A `price`/`ta` condition without
-`exchange` fails validation.
+market data backs the condition. Allowed values: `hyperliquid`, `gmx`, `binance` (exact
+lowercase enum). This arg **only affects the data source** of the condition — it is
+independent of where `market_order` / `limit_order` actions execute. A `price`/`ta`
+condition without `exchange` fails validation.
+
+Per-venue data notes:
+- `price.volume` is **not available on `gmx`** — GMX bars carry no per-bar volume. Use
+  `hyperliquid` or `binance` for volume conditions.
+- `binance` reads its **USD-M perp** markets and uses Binance's own base-symbol convention
+  (`1000PEPE`, not `kPEPE`), validated against Binance's live perp catalog at create time.
+- `pacifica` is **execution-only** — it has no market-data feed, so it is **not** a valid
+  `exchange` for `price`/`ta` conditions. Trigger Pacifica orders from another venue's data.
 
 ```json
 { "source": "price", "method": "current", "args": { "symbol": "BTC", "exchange": "hyperliquid" }, "operator": ">", "value": 100000 }
@@ -1003,7 +1014,7 @@ where `market_order` / `limit_order` actions execute. A `price`/`ta` condition w
 | `change` | `symbol`, `exchange`, `period` | number | % change over period |
 | `high` | `symbol`, `exchange`, `period` | number | High in period |
 | `low` | `symbol`, `exchange`, `period` | number | Low in period |
-| `volume` | `symbol`, `exchange`, `period` | number | Volume (USD) over period |
+| `volume` | `symbol`, `exchange`, `period` | number | Volume (USD) over period. Not available on `gmx`. |
 
 **TA source (`ta`) — technical indicators:** every method also requires `symbol`, `timeframe`, **and `exchange`**.
 
@@ -1025,7 +1036,7 @@ where `market_order` / `limit_order` actions execute. A `price`/`ta` condition w
 | `willr` | `symbol`, `timeframe`, `exchange` | `period` (default 14) | Williams %R |
 
 **TA critical rules:**
-- Every `ta` (and `price`) condition **requires `exchange`** (`hyperliquid` or `gmx`)
+- Every `ta` (and `price`) condition **requires `exchange`** (`hyperliquid`, `gmx`, or `binance`)
 - `ema` and `sma` **require** `period` — it is NOT optional
 - `rsi`, `bbands_*`, `atr`, `cci`, and `willr` accept optional `period` with documented defaults above
 - `period` must be a JSON number (`14`), not a string (`"14"`)
@@ -1668,7 +1679,7 @@ After a query triggers, Auto delivers events via one of three channels:
 |---|---|---|
 | **Webhook** | Production agent automation | `action.type = "webhook"` with signature verification + queue/worker |
 | **Telegram** | Fast human-readable alerts | `action.type = "telegram_bot"` with `params.botToken` + `params.chatId` (direct), or webhook→bot relay for custom formatting |
-| **SSE Stream** | Real-time event consumers; **always available regardless of the chosen action** | `GET /v2/auto/queries/{queryId}/stream` using the **same auth as query creation** (`x-elfa-api-key` for API-key queries, the x402 secret for x402 queries) |
+| **SSE Stream** | Real-time event consumers; **always available regardless of the chosen action** | Two streams, both free and `GET`, both using the **same auth as query creation**: `GET /v2/auto/queries/stream` (account-wide — every query on one connection, **default**, API-key only) or `GET /v2/auto/queries/{queryId}/stream` (single query; the x402 / agent-identity option). See [SSE frame format](#sse-frame-format). |
 
 **Query `title` and `description` in notifications:** both fields are embedded in every
 outbound notification (Telegram, webhook, SSE). Recipients often see an alert hours or days
@@ -1677,7 +1688,7 @@ it was set up**. Always set them.
 
 #### Notification payload (what Auto actually sends)
 
-Auto's outbound notification object (webhook body, SSE `data`) has this shape:
+Auto's outbound **webhook** notification object has this shape:
 
 ```json
 {
@@ -1693,7 +1704,8 @@ Auto's outbound notification object (webhook body, SSE `data`) has this shape:
 ```
 
 `id` is the numeric notification ID; correlate back to a query via `data.queryId`. `title`
-and `body` come from the query's `title` / `description` plus trigger context.
+and `body` come from the query's `title` / `description` plus trigger context. **SSE delivery
+uses a different, more compact frame** — see [SSE frame format](#sse-frame-format) below.
 
 #### Canonical event payload contract (internal normalization)
 
@@ -1726,19 +1738,47 @@ convention**, not the wire format Auto sends (see the payload above):
 | `X-Auto-Signature-Timestamp` | Unix seconds for replay-window check |
 | `X-Auto-Signature` | `v1=<hex_hmac_sha256>` — verify against raw body |
 
-**SSE frame format** (the stream uses the **same auth used to create the query** —
-`x-elfa-api-key` for API-key queries, or the x402 secret for x402 queries; it is *not*
-limited to `x-elfa-api-key`. For minimal setup, attach a `notify` action with a `message` —
-those notifications are retrievable only via SSE or poll):
+#### SSE frame format
+
+There are two SSE streams; both are **free**, both are `GET`, neither requires HMAC, and both
+use the **same auth used to create the query** (`x-elfa-api-key` for API-key queries, the x402
+secret for x402 queries — *not* limited to `x-elfa-api-key`). For minimal setup, attach a
+`notify` action with a `message` — those notifications are retrievable only via SSE or poll.
+
+| Endpoint | Scope | Use when |
+|---|---|---|
+| `GET /v2/auto/queries/stream` | Every query you own, on one connection | **Default.** Correlate events by the payload's `queryId`. **API-key only** — agent identities (`x-elfa-agent-secret`) and x402 get `403`. |
+| `GET /v2/auto/queries/{queryId}/stream` | A single query | You only care about one query, or you are on x402 / an agent identity. |
+
+Prefer the account-wide stream over one connection per query. Open it **after** creating at
+least one query — it returns `410` when you have none.
+
+Both streams emit the same frames — `event: notification`, `id` = the **notification outbox
+event UUID** (not a query ID), and a `: keep-alive` comment every 15s. Events are
+**live-only**: there is no replay and `Last-Event-ID` is ignored.
 
 ```
-id: 12345
-event: notification:new
-data: {"id":12345,"type":"athena_query_notify_only","category":"alerts","title":"...","body":"...","data":{"queryId":"q_123"},"priority":"high","createdAt":"2026-04-01T12:00:00.000Z"}
+id: 9df34377-4d82-4b3c-a016-b0ba27556aa1
+event: notification
+data: {"status":"triggered","title":"Plan Triggered","body":"BTC RSI Breakout","queryId":"q_123","executionId":"2dbf0d70-a85f-4f67-9bd3-876e8fd89f86","triggerTime":"2026-04-01T12:00:00.000Z","conditionsMet":2,"timestamp":1774328400000}
 ```
 
-The SSE `id:` line is the **numeric notification ID** (not the query ID); the query UUID
-lives in `data.queryId`.
+`status` is one of `triggered`, `stopped`, `ended`, or `update`. `queryId` is a **top-level**
+field on the payload — use it to correlate with poll results via `/v2/auto/queries/{queryId}`.
+The payload also carries execution context when present (`executionId`, `triggerTime`,
+`conditionsMet`, `autoDetails`).
+
+**Stream lifecycle.** Each stream closes once there is nothing left to deliver, emitting a
+final `end` event:
+
+| | `/queries/stream` | `/queries/{queryId}/stream` |
+|---|---|---|
+| `410` on connect | You have no active queries | The query is already terminal and drained |
+| Closes when | No active query and no pending execution, held 30s | The query reaches a terminal state and its notifications drain |
+| Final frame | `data: {"code":"USER_STREAM_CLOSED"}` | `data: {"code":"QUERY_STREAM_CLOSED","status":"<terminalStatus>","queryId":"<uuid>"}` |
+
+A `recurring` (`repeat`) query is never terminal, so its stream stays open across triggers. If
+a stream fails after it has started, it emits `event: error` with `{"code":"STREAM_UNAVAILABLE"}`.
 
 **Telegram relay job format** (when transforming webhook → Telegram Bot API):
 
@@ -1957,7 +1997,7 @@ issue, not a capability gap. Iterate on Validate instead of abandoning the query
 | Error signal | What it means | Next action |
 |---|---|---|
 | `EQL_MISSING_ARG` | A required arg is absent (e.g. `period` on `ema`/`sma`, or `exchange` on any `price`/`ta` condition) | Add the missing arg from the TA Args Contract, re-validate |
-| Missing/invalid `exchange` on `price`/`ta` | Every `price`/`ta` condition needs `exchange` | Add `exchange` (`hyperliquid` or `gmx`) to the condition `args`, re-validate |
+| Missing/invalid `exchange` on `price`/`ta` | Every `price`/`ta` condition needs `exchange` | Add `exchange` (`hyperliquid`, `gmx`, or `binance`) to the condition `args`, re-validate |
 | `EQL_INVALID_ARG` / type errors | Wrong type (`"14"` instead of `14`) or unrecognized key (`length` vs `period`) | Use exact key names + JSON numeric types |
 | Unknown `method` | Indicator name not supported | Pick nearest supported method; ask Builder Chat to substitute |
 | Unsupported `timeframe` / `period` | Value outside enum | Snap to nearest allowed value |
@@ -2062,8 +2102,8 @@ Binance/Bybit vs `KPEPE` on Hyperliquid. HIP-3 symbols are rejected for these tw
 - **Tracking** (conditions, alerts, webhooks) covers DEX/on-chain assets — effectively
   unbounded (long-tail tokens, pre-CEX-listing assets, niche memes).
 - **Execution** (`market_order` / `limit_order`) is limited to symbols tradable as perps on
-  the target venue. Tradability varies by exchange — a symbol may be tradable on
-  `hyperliquid`, `gmx`, both, or neither. Pre-flight with
+  the target venue. Tradability varies by exchange — a symbol may be tradable on some venues
+  and not others (see [Supported venues](#supported-venues)). Pre-flight with
   `GET /v2/auto/validate-symbol/{exchange}/{symbol}` (`exchange` = `hyperliquid` or `gmx`).
   The same check also validates symbols for `price`/`ta` data sources, not just execution.
   Non-tradable symbols still work for tracking.
@@ -2073,44 +2113,58 @@ Full reference: [Symbols](https://docs.elfa.ai/auto/symbols) and
 
 #### Trade execution (`market_order` / `limit_order`)
 
-Live trade actions execute on a connected perp venue. **Two venues are supported:
-`hyperliquid` and `gmx`.** (The `exchange` arg on a `price`/`ta` *condition* is separate —
-it only selects market-data source, not where orders execute.)
+Live trade actions execute on a connected perp venue. **Four venues are supported:
+`hyperliquid`, `gmx`, `binance`, and `pacifica`**, selected per action via the required
+`params.exchange` field — each needs an active connection for the venue it targets. What each
+venue supports differs; the [Supported venues](#supported-venues) matrix below is enforced at
+query creation, so a rejected combination fails validation rather than at execution time. (The
+`exchange` arg on a `price`/`ta` *condition* is separate — it only selects market-data source,
+not where orders execute, and `pacifica` is execution-only.)
 
 **Order params:**
 
 | Param | Required | Notes |
 |---|---|---|
-| `exchange` | yes | `hyperliquid` or `gmx` (no default) |
+| `exchange` | yes | `hyperliquid`, `gmx`, `binance`, or `pacifica` (no default) |
 | `symbol` | yes | e.g. `BTC`, `ETH`, `SOL` — must be tradable on the venue |
 | `side` | yes | `buy` or `sell` |
 | `amount` / `size` / `positionSizePercent` | yes (exactly one) | `amount` = USD/USDC notional; `size` = contracts/units; `positionSizePercent` = % of account value, range `(0, 100]` |
 | `price` | limit only | absolute limit price (string) |
-| `reduceOnly` | no | default `false`; **Hyperliquid only** (rejected on GMX) |
+| `reduceOnly` | no | default `false`; **rejected on `gmx`**, supported on every other venue |
 | `leverage` | no | integer ≥ 1 |
-| `marginType` | no | `cross` or `isolated`; **Hyperliquid only** (rejected on GMX); when omitted, the asset's current margin mode is preserved |
-| `tp` | no | take-profit, `"5%"` or absolute `"50000"` |
-| `sl` | no | stop-loss, `"2%"` or absolute `"48000"` |
+| `marginType` | no | `cross` or `isolated`; `gmx` accepts `isolated` only (`cross` rejected); when omitted, the asset's current margin mode is preserved |
+| `tp` | no | take-profit, `"5%"` or absolute `"50000"`. **Rejected on `binance` and `pacifica`.** |
+| `sl` | no | stop-loss, `"2%"` or absolute `"48000"`. **Rejected on `binance` and `pacifica`.** |
 
 `positionSizePercent` resolves at execution as
 `accountValue × (positionSizePercent / 100) × effectiveLeverage`, converted to size via the
 order's reference price — mark price for `market_order`, limit price for `limit_order`.
 
-**Venue differences:**
+#### Supported venues
 
-| Feature | Hyperliquid | GMX |
-|---|---|---|
-| Minimum `amount` | 10 USDC | none |
-| `reduceOnly` | supported | rejected |
-| `marginType` | supported | rejected |
-| HIP-3 markets (equities, indices, commodities, FX) | supported | not listed (rejected) |
+Rules below are enforced at **query creation** — a rejected combination fails validation, not
+at execution. Minimums are USD notional and apply to `params.amount`.
+
+| Venue | Min notional | `reduceOnly` | `marginType` | `tp` / `sl` | HIP-3 markets | `price` / `ta` data |
+|---|---|---|---|---|---|---|
+| `hyperliquid` | `10` | Yes | `cross`, `isolated` | Yes | Yes | Yes |
+| `gmx` | none | **rejected** | `isolated` only | Yes | **rejected** | Yes — no `volume` |
+| `binance` | `5` | Yes | `cross`, `isolated` | **rejected** | **rejected** | Yes — perps only |
+| `pacifica` | `5` | Yes | `cross`, `isolated` | **rejected** | **rejected** | **not a data venue** |
+
+Binance trades **perps only** through Auto — spot markets are not exposed to trade actions.
+The rightmost column is each venue's availability as a **data source** for `price`/`ta`
+conditions — a separate choice from where an order executes. You can monitor one venue and
+execute on another; `pacifica` can only be executed on, never used as a condition venue (it
+has no market-data feed — trigger Pacifica orders from another venue's data, e.g. a `price`
+condition on `binance` with a `market_order` on `pacifica`).
 
 **Trading HIP-3 markets:** order actions are not limited to crypto. Any HIP-3 market
 (`xyz:SP500`, `xyz:NVDA`, `xyz:GOLD`, `xyz:CL`, `xyz:SPCX`) is tradable through the same
 `market_order` / `limit_order` schema using its DEX-prefixed symbol — **`hyperliquid` only**
-(the same order with `"exchange": "gmx"` is rejected `EQL_INVALID_SYMBOL`). They trade 24/7,
-including when the underlying cash market is halted; max leverage is per-market and the `10`
-USDC minimum notional still applies.
+(no other venue lists HIP-3 markets; the same order on `gmx`, `binance`, or `pacifica` is
+rejected `EQL_INVALID_SYMBOL`). They trade 24/7, including when the underlying cash market is
+halted; max leverage is per-market and the `10` USDC minimum notional still applies.
 
 **Catalyst pattern (prediction market → asset it moves):** a prediction-market condition
 doesn't have to end the plan — it can be the trigger for a position in the asset that catalyst
@@ -2142,10 +2196,48 @@ orders on your behalf.
 | `/v2/auto/exchanges` | GET | API key | List connected exchanges |
 | `/v2/auto/exchanges/:exchange` | DELETE | HMAC | Disconnect |
 
+**Connecting a venue.** Credential shape depends on the venue; fields use ccxt's own names.
+Credentials are **verified with the venue before the connection is stored**, so a bad key
+fails at connect time, not later as a failed order.
+
+| Venue | Credentials | How to connect |
+|---|---|---|
+| `hyperliquid` | agent wallet | App onboarding flow, then **Verify connection** in the portal |
+| `gmx` | agent wallet | Same flow as Hyperliquid |
+| `binance` | `apiKey` + `secret` | Directly via `POST /v2/auto/exchanges` (HMAC) — standard CEX API credentials |
+| `pacifica` | `privateKey` + `walletAddress` | Directly via `POST /v2/auto/exchanges` (HMAC). `privateKey` is a base58 Solana key; `walletAddress` is the **trading wallet** and is required (not derived from the key) |
+
+`credentialType` is a free-form label (`agent_wallet`, `api_key`, `wallet` are the recommended
+values); the backend does not enforce it as an enum. Sign the mounted path `/exchanges`
+(reusing the `signAutoRequest` helper above):
+
+```ts
+// Binance
+const binanceBody = JSON.stringify({
+  exchange: "binance",
+  credentialType: "api_key",
+  credentials: { apiKey: "binance_api_key", secret: "binance_api_secret" },
+});
+const binanceSig = signAutoRequest("POST", "/exchanges", binanceBody);
+
+// Pacifica
+const pacificaBody = JSON.stringify({
+  exchange: "pacifica",
+  credentialType: "wallet",
+  credentials: {
+    privateKey: "base58_private_key",
+    walletAddress: "7dDGpxgjj3j7TRTJQ2qpeqDJvVnikb3exiVjarY4pQS1",
+  },
+});
+const pacificaSig = signAutoRequest("POST", "/exchanges", pacificaBody);
+```
+
 **Trade-ready onboarding** (one-time): enable Auto in the dev portal (Privy link + HMAC
-secret) → complete venue onboarding (Hyperliquid and/or GMX) in the Elfa app → return to the
-portal and click **Verify connection**. Then `GET /v2/auto/exchanges` must show the target
-venue active, or trade actions fail at execution time with `AGENT_WALLET_REQUIRED`.
+secret) → connect the venue you want to trade — for **Hyperliquid / GMX** complete onboarding
+in the Elfa app then click **Verify connection** in the portal; for **Binance / Pacifica**
+connect directly via `POST /v2/auto/exchanges` with the credentials above. Then
+`GET /v2/auto/exchanges` must show the target venue active, or trade actions fail at execution
+time with `AGENT_WALLET_REQUIRED`.
 
 Exchange connections are API-key-mode only. Not available via x402. Trade execution is not
 available via x402 at all. Full reference:
@@ -2177,8 +2269,9 @@ Full Trade docs: [docs.elfa.ai/trade/overview](https://docs.elfa.ai/trade/overvi
 
 #### Trade vs Auto — which to use
 
-Both place orders for the **same linked account** with the **same API key + HMAC** auth and
-the **same venues** (`hyperliquid`, `gmx`). They differ only in _when_ the order fires:
+Both place orders for the **same linked account** with the **same API key + HMAC** auth. They
+differ in _when_ the order fires — and in which venues they reach: Trade executes on
+`hyperliquid` and `gmx`, while Auto additionally supports `binance` and `pacifica`:
 
 | | **Trade** (`/v2/trade/*`) | **Auto** (`/v2/auto/*`) |
 |---|---|---|
