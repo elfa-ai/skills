@@ -2205,7 +2205,7 @@ fails at connect time, not later as a failed order.
 | `hyperliquid` | agent wallet | App onboarding flow, then **Verify connection** in the portal |
 | `gmx` | agent wallet | Same flow as Hyperliquid |
 | `binance` | `apiKey` + `secret` | Directly via `POST /v2/auto/exchanges` (HMAC) — standard CEX API credentials |
-| `pacifica` | `privateKey` + `walletAddress` | Directly via `POST /v2/auto/exchanges` (HMAC). `privateKey` is a base58 Solana key; `walletAddress` is the **trading wallet** and is required (not derived from the key) |
+| `pacifica` | `privateKey` + `walletAddress` | Directly via `POST /v2/auto/exchanges` (HMAC). `privateKey` is the base58 Solana key for the approved agent wallet (64-byte keypair or 32-byte seed); `walletAddress` is the funded **trading account**, not the key's derived address |
 
 `credentialType` is a free-form label (`agent_wallet`, `api_key`, `wallet` are the recommended
 values); the backend does not enforce it as an enum. Sign the mounted path `/exchanges`
