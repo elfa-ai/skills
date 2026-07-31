@@ -15,7 +15,7 @@
 #   ./elfa_call.sh <endpoint> [options]
 #
 # Examples:
-#   ./elfa_call.sh /v2/ping
+#   ./elfa_call.sh /v2/ping   # no auth required
 #   ./elfa_call.sh /v2/aggregations/trending-tokens -q 'timeWindow=24h&pageSize=10'
 #   ./elfa_call.sh /v2/data/top-mentions -q 'ticker=$SOL&timeWindow=24h'
 #   ./elfa_call.sh /v2/chat -d '{"message":"What is trending?","analysisType":"chat"}'
@@ -57,21 +57,13 @@ Auto endpoint HMAC signing:
     x-elfa-signature: <hex_hmac_sha256>
 
   The signature payload is: timestamp + METHOD + mounted_path + body
-  where mounted_path is the portion of the path AFTER the mount (/v2/auto or
-  /v2/trade).
+  where mounted_path is the portion of the path AFTER the /v2/auto mount.
   Example: /v2/auto/queries  →  mounted_path = /queries
            /v2/auto/queries/q_123  →  mounted_path = /queries/q_123
-           /v2/trade/orders  →  mounted_path = /orders
-           /v2/trade/positions/close  →  mounted_path = /positions/close
 
   HMAC always required (script will refuse to call without --hmac-secret):
     POST   /v2/auto/exchanges                            (connect — trade gateway)
     DELETE /v2/auto/exchanges/{exchange}                 (disconnect — trade gateway)
-    POST   /v2/trade/orders                              (place order)
-    POST   /v2/trade/orders/cancel                       (cancel resting order)
-    POST   /v2/trade/orders/modify                       (modify resting order)
-    POST   /v2/trade/positions/close                     (close position)
-    POST   /v2/trade/positions/tpsl                      (set take-profit/stop-loss)
 
   HMAC conditional (signed if --hmac-secret is provided; allowed without for
   notification-only EQL actions like notify / telegram_bot / webhook):
@@ -89,12 +81,8 @@ Auto endpoint HMAC signing:
   HMAC never required (signing is skipped even if --hmac-secret is set):
     POST   /v2/auto/chat                                 (Builder Chat — produces drafts only)
     POST   /v2/auto/queries/validate                     (free, no side effects)
-    POST   /v2/auto/queries/preview                      (free, no side effects)
+    POST   /v2/auto/queries/drafts/{draftId}/validate    (validate stored draft)
     DELETE /v2/auto/queries/drafts/{draftId}             (discard draft)
-    POST   /v2/auto/queries/drafts/{draftId}/preview     (preview stored draft)
-    POST   /v2/trade/orders/preview                      (dry-run order — free)
-    POST   /v2/trade/positions/close/preview             (dry-run close — free)
-    POST   /v2/trade/positions/tpsl/preview              (dry-run TP/SL — free)
 
   Note: For "conditional" routes, the API server enforces HMAC only when the
   EQL action is trade-flavoured (market_order, limit_order, or llm callback to
@@ -115,8 +103,8 @@ Examples:
   # Auto: validate a query (no HMAC needed)
   ./elfa_call.sh /v2/auto/queries/validate -d '{"query":{...}}'
 
-  # Auto: preview a query without creating it (no HMAC needed)
-  ./elfa_call.sh /v2/auto/queries/preview -d '{"query":{...}}'
+  # Auto: validate a stored draft (no HMAC needed)
+  ./elfa_call.sh /v2/auto/queries/drafts/d_123/validate -X POST
 
   # Auto: Builder Chat (no HMAC needed — produces drafts only)
   ./elfa_call.sh /v2/auto/chat -d '{"message":"Alert me when BTC breaks 100k"}'
@@ -144,15 +132,6 @@ Examples:
 
   # Auto: connect an exchange (HMAC ALWAYS required — trade gateway)
   ./elfa_call.sh /v2/auto/exchanges -d '{"exchange":"hyperliquid",...}' --hmac-secret "$ELFA_HMAC_SECRET"
-
-  # Trade: preview an order (free, no HMAC — dry-run)
-  ./elfa_call.sh /v2/trade/orders/preview -d '{"exchange":"hyperliquid","symbol":"BTC","side":"buy","orderType":"market","amount":"25"}'
-
-  # Trade: place an order (HMAC ALWAYS required — signs mounted path /orders)
-  ./elfa_call.sh /v2/trade/orders -d '{"exchange":"hyperliquid","symbol":"BTC","side":"buy","orderType":"market","amount":"25"}' --hmac-secret "$ELFA_HMAC_SECRET"
-
-  # Trade: close a position (HMAC ALWAYS required — signs mounted path /positions/close)
-  ./elfa_call.sh /v2/trade/positions/close -d '{"exchange":"hyperliquid","symbol":"BTC","orderType":"market","closePercent":100}' --hmac-secret "$ELFA_HMAC_SECRET"
 
   # Auto x402: create query with agent secret
   ./elfa_call.sh /v2/auto/queries --x402 --payment '<payload>' --agent-secret "$ELFA_AGENT_SECRET"
@@ -217,7 +196,7 @@ fi
 
 # Determine HMAC behavior for this Auto request. Tri-state:
 #
-#   none         — never sign (read-only, validate/preview, /chat ungated routes)
+#   none         — never sign (read-only, validate, /chat ungated routes)
 #   conditional  — sign IF an HMAC secret is available; allow request through
 #                  without HMAC otherwise. Per the docs, the server bypasses HMAC
 #                  for notification-only EQL actions (notify / telegram_bot /
@@ -226,27 +205,16 @@ fi
 #                  Always-signing remains safe — signed requests are accepted
 #                  on every route.
 #   required     — must have an HMAC secret; refuse to call without one. Used
-#                  for exchange linking (POST/DELETE /exchanges) which always
-#                  needs HMAC, and for all Trade (/v2/trade) write routes.
+#                  for exchange linking (POST/DELETE /exchanges), which always
+#                  needs HMAC.
 #
 # We check the *original* endpoint (before x402 rewrite) by examining whether
-# the path contains /auto/ or /trade/ and the method is POST or DELETE.
+# the path contains /auto/ and the method is POST or DELETE.
 HMAC_BEHAVIOR="none"
 IS_AUTO_ENDPOINT=false
 # Use the original endpoint for detection (strip /x402 prefix if present)
 ORIGINAL_ENDPOINT="${ENDPOINT#/x402}"
-if [[ "$ORIGINAL_ENDPOINT" == /v2/trade/* ]]; then
-  # Trade (direct execution): writes always require HMAC; previews never do.
-  # mounted_path is relative to /v2/trade (e.g. /orders), NOT /v2/auto.
-  if [[ "$METHOD" == "POST" ]]; then
-    case "${ORIGINAL_ENDPOINT#/v2/trade}" in
-      */preview)                  ;;  # previews are free, unsigned
-      /orders|/orders/cancel|/orders/modify|/positions/close|/positions/tpsl)
-                                  HMAC_BEHAVIOR="required" ;;  # writes always signed
-      *)                          HMAC_BEHAVIOR="required" ;;  # unknown write — fail-safe
-    esac
-  fi
-elif [[ "$ORIGINAL_ENDPOINT" == /v2/auto/* ]]; then
+if [[ "$ORIGINAL_ENDPOINT" == /v2/auto/* ]]; then
   IS_AUTO_ENDPOINT=true
   if [[ "$METHOD" == "POST" || "$METHOD" == "DELETE" ]]; then
     MOUNTED_CHECK="${ORIGINAL_ENDPOINT#/v2/auto}"
@@ -256,8 +224,7 @@ elif [[ "$ORIGINAL_ENDPOINT" == /v2/auto/* ]]; then
       # Never HMAC
       /chat)                        ;;  # ungated — produces drafts only
       /queries/validate)            ;;  # free, no side effects
-      /queries/preview)             ;;  # free, no side effects
-      /queries/drafts/*/preview)    ;;  # preview a stored draft
+      /queries/drafts/*/validate)   ;;  # validate a stored draft — free
       /queries/drafts/*/convert)    HMAC_BEHAVIOR="conditional" ;;  # convert depends on stored draft action
       /queries/drafts/*)            ;;  # GET/DELETE specific draft (no side effects)
       /queries/drafts)              HMAC_BEHAVIOR="conditional" ;;  # POST upsert depends on body action
@@ -300,7 +267,7 @@ SHOULD_SIGN=false
 case "$HMAC_BEHAVIOR" in
   required)
     if [[ -z "$HMAC_SECRET" ]]; then
-      die "${METHOD} ${ORIGINAL_ENDPOINT} always requires HMAC (Trade write / exchange linking). Set ELFA_HMAC_SECRET in your environment or pass --hmac-secret <secret>."
+      die "${METHOD} ${ORIGINAL_ENDPOINT} always requires HMAC (exchange linking). Set ELFA_HMAC_SECRET in your environment or pass --hmac-secret <secret>."
     fi
     SHOULD_SIGN=true
     ;;
@@ -314,13 +281,9 @@ case "$HMAC_BEHAVIOR" in
 esac
 
 if [[ "$SHOULD_SIGN" == true ]]; then
-  # Extract mounted_path: strip the mount prefix (/v2/auto or /v2/trade) from
-  # the original endpoint. The signed path is relative to the mount.
-  if [[ "$ORIGINAL_ENDPOINT" == /v2/trade/* ]]; then
-    MOUNTED_PATH="${ORIGINAL_ENDPOINT#/v2/trade}"
-  else
-    MOUNTED_PATH="${ORIGINAL_ENDPOINT#/v2/auto}"
-  fi
+  # Extract mounted_path: strip the /v2/auto mount prefix from the original
+  # endpoint. The signed path is relative to the mount.
+  MOUNTED_PATH="${ORIGINAL_ENDPOINT#/v2/auto}"
   # Ensure mounted_path starts with /
   [[ "$MOUNTED_PATH" == /* ]] || MOUNTED_PATH="/${MOUNTED_PATH}"
 

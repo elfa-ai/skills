@@ -138,9 +138,9 @@ Set it as an environment variable:
 export ELFA_API_KEY=your_key_here
 ```
 
-Free tier works with most endpoints. Trending narratives and AI chat require a paid plan — see the link above for details.
+Free tier works with most endpoints. Trending narratives and AI chat require Grow+ or PAYG; streaming AI chat requires PAYG or Enterprise — see the link above for details.
 
-Alternatively, use **x402 keyless payments** to pay per request with USDC on Base, Arbitrum, Polygon, or Avalanche (no signup required). See the [x402 docs](https://docs.elfa.ai/x402-payments) for setup.
+Alternatively, use **x402 keyless payments** to pay per request with USDC on Base, Arbitrum, Polygon, Avalanche, or Solana (no signup required). See the [x402 docs](https://docs.elfa.ai/x402-payments) for setup.
 
 ## Example prompts
 
@@ -197,9 +197,13 @@ Set up the Elfa GRVT bot and create a SOL RSI dip-buy strategy with TP and SL
 | `/v2/data/event-summary` | AI event summaries (5 credits) |
 | `/v2/data/trending-narratives` | Trending narrative clusters (5 credits) |
 | `/v2/data/token-news` | Token-related news |
+| `/v2/data/market-events` | Impact-scored market events (**beta** — access-gated) |
 | `/v2/aggregations/trending-cas/twitter` | Trending contract addresses (Twitter) |
 | `/v2/aggregations/trending-cas/telegram` | Trending contract addresses (Telegram) |
 | `/v2/chat` | AI chat — market analysis, token intros, account reviews |
+| `/v2/chat/stream` | AI chat as an incremental SSE stream (PAYG / Enterprise) |
+| `/v2/key-status` | API key usage & limits (free) |
+| `/v2/ping` | Health check — no auth required (free) |
 
 ### Auto endpoints (Condition Engine)
 
@@ -207,17 +211,17 @@ Set up the Elfa GRVT bot and create a SOL RSI dip-buy strategy with TP and SL
 |---|---|
 | `/v2/auto/chat` | Builder Chat — AI-assisted query building |
 | `/v2/auto/queries/validate` | Validate EQL query and preview cost |
-| `/v2/auto/queries/preview` | Preview a query without creating it |
 | `/v2/auto/queries` | Create and list Auto queries |
 | `/v2/auto/queries/:queryId` | Poll query status (GET) |
 | `/v2/auto/queries/:queryId/cancel` | Cancel an `active` query (POST) |
 | `/v2/auto/queries/:queryId` | Delete a terminal query (DELETE — `triggered` / `expired` / `cancelled` / `failed` only) |
-| `/v2/auto/queries/:queryId/stream` | Stream notifications via SSE |
+| `/v2/auto/queries/stream` | Stream notifications for **all** your queries on one connection (SSE, API-key only) |
+| `/v2/auto/queries/:queryId/stream` | Stream notifications for a single query via SSE |
 | `/v2/auto/queries/:queryId/sessions` | List/get LLM analysis sessions |
-| `/v2/auto/queries/drafts` | Upsert, list, preview, convert, delete query drafts |
+| `/v2/auto/queries/drafts` | Upsert, list, validate, convert, delete query drafts |
 | `/v2/auto/executions` | List and get trigger execution records |
 | `/v2/auto/exchanges` | Connect, list, disconnect exchange integrations |
-| `/v2/auto/validate-tradable-symbol/:symbol` | Check whether a symbol is tradable as a Hyperliquid perp (pre-flight for `market_order`, `limit_order`, or `llm` trade callbacks) |
+| `/v2/auto/validate-symbol/:exchange/:symbol` | Check whether a symbol is supported on a venue (`hyperliquid` / `gmx`) — pre-flight for trade actions and for `price`/`ta` data sources |
 
 Auto endpoints require HMAC signing for trade-action mutations (`market_order`, `limit_order`, or `llm` callback to either) and exchange linking in API key mode; notification-only mutations (`notify`, `telegram_bot`, `webhook`, or `llm` callback to those) skip HMAC. x402 mode uses `x-elfa-agent-secret` instead of HMAC. Always-signing remains safe in API key mode — signed requests are accepted on every route. See [Auto docs](https://docs.elfa.ai/auto/overview).
 

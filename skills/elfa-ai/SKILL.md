@@ -3,7 +3,8 @@ name: elfa-ai
 description: >
   Use this skill for Elfa API crypto social intelligence and Auto condition-engine workflows:
   trending tokens, narratives, mentions, smart account stats, token news, trending contract
-  addresses, AI market chat, integration examples, curl/code snippets, automated alerts,
+  addresses, market events, AI market chat (JSON and SSE streaming), integration examples,
+  curl/code snippets, automated alerts,
   EQL queries, trigger pipelines, and agent workflows that react to market conditions.
   Auto can also place live perp trades on Hyperliquid, GMX, Binance, and Pacifica
   (market/limit orders, with TP/SL on Hyperliquid and GMX) when a condition fires, trigger
@@ -12,7 +13,7 @@ description: >
   recurring plans via `repeat` (including trade actions), run calendar schedules via
   `cron.schedule`, and trade crypto plus HIP-3 assets (equities, indices, commodities, FX,
   pre-IPO — 24/7). Supports API-key calls and x402 pay-per-request USDC on Base, Arbitrum,
-  Polygon, or Avalanche.
+  Polygon, Avalanche, or Solana.
 ---
 
 # Elfa API Skill
@@ -20,11 +21,11 @@ description: >
 This skill enables agents to work with the [Elfa API](https://api.elfa.ai) — a social listening,
 market context layer, and automated condition engine for crypto. Elfa ingests real-time data
 from Twitter/X, Telegram, and other sources, then structures sentiment, narratives, and
-attention shifts into actionable trading insights. The **Auto** subsystem adds a managed
-condition engine and trigger pipeline — describe what to watch for, and Auto evaluates
-continuously and fires actions when conditions are met. The **Trade** subsystem adds
-direct, synchronous order execution — place and manage perp orders on Hyperliquid and GMX
-immediately, without a condition or query.
+attention shifts into actionable trading insights. The **Market Intelligence** endpoints cover
+measurement (counts, engagement, accounts) and interpretation (chat, summaries, narratives).
+The **Auto** subsystem adds a managed condition engine and trigger pipeline — describe what to
+watch for, and Auto evaluates continuously and fires actions when conditions are met,
+including live perp orders.
 
 Full documentation: [docs.elfa.ai](https://docs.elfa.ai)
 
@@ -47,8 +48,12 @@ Elfa supports API-key auth and x402 keyless payments. API keys are optional when
 | Variable | Required | Use |
 |---|---:|---|
 | `ELFA_API_KEY` | No | API-key authenticated requests. Get a free key at <https://go.elfa.ai/claude-skills>. |
-| `ELFA_HMAC_SECRET` | No | HMAC secret for Auto trade-action mutations (`market_order`, `limit_order`, or `llm` callbacks to those) and exchange linking, **and for all Trade (`/v2/trade/*`) write routes** (place / cancel / modify / close / tpsl). Auto notification-only mutations (`notify`, `telegram_bot`, `webhook`, or `llm` callbacks to those) and Trade previews accept unsigned requests; the HMAC requirement on trade actions reflects current documented policy and is subject to change. Always-signing remains compatible if you prefer to avoid edge cases. |
+| `ELFA_HMAC_SECRET` | No | HMAC secret for Auto trade-action mutations (`market_order`, `limit_order`, or `llm` callbacks to those) and exchange linking. Notification-only mutations (`notify`, `telegram_bot`, `webhook`, or `llm` callbacks to those) accept unsigned requests; the HMAC requirement on trade actions reflects current documented policy and is subject to change. Always-signing remains compatible if you prefer to avoid edge cases. |
 | `ELFA_AGENT_SECRET` | No | Persistent agent identity secret for x402 Auto. Generate once with `openssl rand -hex 32` and reuse for query lifecycle calls. |
+
+> **Do not reuse these as your webhook signing secret.** `webhook.params.signingSecret` is a
+> *separate* per-webhook secret that verifies deliveries **from** Elfa **to** your server. See
+> [Webhook signature verification](#webhook-signature-verification).
 
 x402 wallet signing is handled client-side by `@x402/fetch` or `@x402/axios`.
 
@@ -57,7 +62,9 @@ x402 wallet signing is handled client-side by `@x402/fetch` or `@x402/axios`.
 - User asks about **trending tokens, narratives, or contract addresses** in crypto
 - User wants **social mentions** for a specific ticker or keyword
 - User wants **smart stats** (smart followers, engagement) for a Twitter/X account
-- User wants an **AI-generated market summary, macro overview, or token analysis**
+- User wants an **AI-generated market summary, macro overview, or token analysis** — including
+  **streaming** chat output
+- User wants **structured market events** with impact scores (beta)
 - User asks how to **integrate, call, or use the Elfa API**
 - User wants **code examples** (curl, Python, JavaScript/TypeScript) for Elfa endpoints
 - User mentions "elfa" in a crypto or trading data context
@@ -84,7 +91,7 @@ Elfa supports two independent ways to authenticate requests:
 
 Both modes access the same data. The only difference is how you authenticate:
 - **API key** — register at https://go.elfa.ai/claude-skills, get 1,000 free credits.
-- **x402** — pay per request with USDC on Base, Arbitrum, Polygon, or Avalanche. No
+- **x402** — pay per request with USDC on Base, Arbitrum, Polygon, Avalanche, or Solana. No
   registration, no API key. Currently in beta with a 70% discount on Auto endpoints.
 
 ### Endpoints at a glance
@@ -96,17 +103,23 @@ except `key-status` which is API key mode only.
 
 | Endpoint | Method | Description | Credits |
 |---|---|---|---|
+| `/v2/ping` | GET | Health check — **no auth required** (API key mode only) | Free |
 | `/v2/key-status` | GET | API key usage & limits (API key only) | Free |
 | `/v2/aggregations/trending-tokens` | GET | Trending tokens by mention count | 1 |
 | `/v2/account/smart-stats` | GET | Smart follower & engagement stats | 1 |
 | `/v2/data/top-mentions` | GET | Top mentions for a ticker symbol | 1 |
 | `/v2/data/keyword-mentions` | GET | Search mentions by keywords or account | 1 |
 | `/v2/data/event-summary` | GET | AI event summaries from keyword mentions | 5 |
-| `/v2/data/trending-narratives` | GET | Trending narrative clusters | 5 |
+| `/v2/data/trending-narratives` | GET | Trending narrative clusters (Grow+ / PAYG) | 5 |
 | `/v2/data/token-news` | GET | Token-related news mentions | 1 |
+| `/v2/data/market-events` | GET | **Beta** — impact-scored market events (access-gated) | Beta |
 | `/v2/aggregations/trending-cas/twitter` | GET | Trending contract addresses (Twitter) | 1 |
 | `/v2/aggregations/trending-cas/telegram` | GET | Trending contract addresses (Telegram) | 1 |
-| `/v2/chat` | POST | AI chat with multiple analysis modes | Speed-based |
+| `/v2/chat` | POST | AI chat, complete JSON response (Grow+ / PAYG) | Speed-based |
+| `/v2/chat/stream` | POST | AI chat, incremental SSE stream (PAYG / Enterprise) | Speed-based |
+
+`/v2/ping`, `/v2/key-status`, `/v2/chat/stream`, and `/v2/data/market-events` are **API-key
+mode only** — they have no `/x402/v2/` counterpart.
 
 #### Auto endpoints (Condition Engine)
 
@@ -189,32 +202,12 @@ _Other:_
 
 > **Note on x402 Auto scope.** Trade execution actions are not available via x402. Exchange connections, drafts, executions, and the terminal-query DELETE endpoint are API-key-mode only. x402 Auto covers the core monitoring lifecycle (chat, validate, create, poll, cancel, stream, sessions). The account-wide stream `GET /v2/auto/queries/stream` is **not** exposed on x402 — x402 (and agent identities) get the per-query stream only.
 
-#### Trade endpoints (Direct Execution)
-
-Trade is **direct, synchronous** order execution — one request, one order, no condition
-engine. Same `x-elfa-api-key` + HMAC auth as Auto, but a narrower venue set: Trade executes
-on `hyperliquid` and `gmx` only, while Auto additionally supports `binance` and `pacifica`.
-They differ mainly in _when_ the order fires. Trade is **API-key mode only** (no x402). See
-[Trade docs](https://docs.elfa.ai/trade/overview) for full details.
-
-All endpoints are `POST` under `/v2/trade`. HMAC is required on every **write**; previews
-are free and unsigned.
-
-| Endpoint | Method | Description | HMAC | Credits |
-|---|---|---|---|---|
-| `/v2/trade/orders` | POST | Place a market or limit order | Yes | 1 |
-| `/v2/trade/orders/preview` | POST | Dry-run an order (`wouldExecute`) | No | Free |
-| `/v2/trade/orders/cancel` | POST | Cancel a resting order | Yes | Free |
-| `/v2/trade/orders/modify` | POST | Modify size / price / trigger price | Yes | Free |
-| `/v2/trade/positions/close` | POST | Close a position (full or partial) | Yes | 1 |
-| `/v2/trade/positions/close/preview` | POST | Dry-run a close | No | Free |
-| `/v2/trade/positions/tpsl` | POST | Set take-profit / stop-loss | Yes | 1 |
-| `/v2/trade/positions/tpsl/preview` | POST | Dry-run a TP/SL update | No | Free |
-
-> **Credits & billing.** 1 credit per executed order (place / close / tpsl), charged only
-> on a `2xx`; failed fills (`422`/`502`) are never billed. Previews, cancels, and modifies
-> are free. Trade bypasses the monthly spend-cap hard-stop (a key over its limit still trades
-> and bills overage).
+> **The direct Trade API (`/v2/trade/*`) has been withdrawn.** It was removed from the
+> published OpenAPI spec and the docs site. Place orders through Auto trade actions
+> (`market_order` / `limit_order`) instead — see
+> [Trade execution](#trade-execution-market_order--limit_order). If you have existing
+> `/v2/trade/*` integration code, verify against [docs.elfa.ai](https://docs.elfa.ai) before
+> relying on it.
 
 For full parameter details, see the [Elfa API documentation](https://docs.elfa.ai).
 
@@ -232,7 +225,8 @@ Check whether the user wants to **make a live call**, **get code/integration hel
 **set up automated monitoring**.
 
 - If the user says things like "show me trending tokens", "what's the sentiment on SOL",
-  "get me the top mentions for ETH" → they want **live data**. Proceed to Step 2a.
+  "get me the top mentions for ETH" → they want **live data**. Proceed to Step 2a. If it is
+  unclear which endpoint fits, or the ask needs more than one call, see Step 2c.
 - If the user says things like "how do I call the trending tokens endpoint", "give me a
   curl example", "help me integrate Elfa" → they want **code snippets**. Skip to Step 4.
 - If the user mentions **x402**, **keyless**, **pay-per-request**, or **wallet-based access**
@@ -268,15 +262,40 @@ Use the `bash_tool` to call the Elfa API via curl.
      `printenv`, or similar commands that would expose credentials in the transcript.
    - If a user does paste a key in chat, warn them to rotate it and set it as an env var instead.
 
-**Free tier limitations:**
-The free tier provides 1,000 credits that cover most endpoints (trending tokens, smart stats,
-top mentions, keyword mentions, event summary, token news, trending contract addresses). Some
-endpoints require a higher tier: **trending narratives** needs Grow or Enterprise, and
-**AI chat** needs Grow, Enterprise, or PAYG. The **Chill** tier adds more credits but no new
-endpoints over Free. Check https://go.elfa.ai/claude-skills for the latest tier requirements.
+**Plans, credits, and rate limits:**
 
-If a user hits an authorization error on one of these endpoints, let them know they can
-upgrade their plan or use x402 payments instead. Full details at https://go.elfa.ai/claude-skills.
+| | Free | Chill | Grow | Enterprise |
+|---|---|---|---|---|
+| Monthly | $0 | $40 | $290 | Custom |
+| Annual (15% off) | — | $408 | $2,958 | Custom |
+| Credits / month | 1,000 | 5,000 | 40,000 | Custom |
+| Rate limit | 60 RPM | 60 RPM | 120 RPM | Custom |
+
+Pay-per-use: **PAYG** is $0.009/credit at 60 RPM with an API key; **x402** is $0.009/credit at
+1,000 RPM with no account. Same per-credit price — pick on integration style.
+
+**What each tier unlocks:**
+- **Free** — core social data: trending tokens, smart stats, top mentions, keyword mentions,
+  event summaries, token news, trending contract addresses (Twitter + Telegram)
+- **Chill** — everything in Free, more credits (no new endpoints)
+- **Grow** — everything in Chill, plus token mindshare, sentiment-weighted mentions,
+  **trending narratives**, and **AI Chat** (`POST /v2/chat`)
+- **Enterprise** — everything in Grow, plus **streaming AI Chat** (`POST /v2/chat/stream`),
+  dedicated support, white-label, custom data retention
+
+Gate summary for the tier-restricted endpoints:
+
+| Endpoint | Requires |
+|---|---|
+| `/v2/data/trending-narratives` | Grow+ or PAYG |
+| `/v2/chat` | Grow+ or PAYG |
+| `/v2/chat/stream` | **PAYG or Enterprise only** |
+| `/v2/data/market-events` | Beta access — email sales@elfa.ai |
+
+Exceeding monthly credits rejects further requests until the next month; exceeding the rate
+limit returns `429` (honor `Retry-After`). If a user hits an authorization error on a gated
+endpoint, they can upgrade their plan or use x402 instead. Full details at
+https://go.elfa.ai/claude-skills.
 
 **Making the call:**
 
@@ -286,8 +305,8 @@ curl -s -H "x-elfa-api-key: $ELFA_API_KEY" "https://api.elfa.ai/v2/aggregations/
 
 ### Step 2b: Making live API calls (x402 keyless mode)
 
-x402 lets any wallet pay per request using USDC on Base, Arbitrum, Polygon, or Avalanche —
-no API key, no registration. This is ideal for agents, bots, and programmatic access.
+x402 lets any wallet pay per request using USDC on Base, Arbitrum, Polygon, Avalanche, or
+Solana — no API key, no registration. This is ideal for agents, bots, and programmatic access.
 
 **How x402 works:**
 1. Send a request to the `/x402/v2/` version of any endpoint (no auth header).
@@ -317,6 +336,9 @@ no API key, no registration. This is ideal for agents, bots, and programmatic ac
 | Arbitrum | `eip155:42161` | `0xaf88d065e77c8cC2239327C5EDb3A432268e5831` | [payai.network](https://facilitator.payai.network) |
 | Polygon | `eip155:137` | `0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359` | [payai.network](https://facilitator.payai.network) |
 | Avalanche | `eip155:43114` | `0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E` | [payai.network](https://facilitator.payai.network) |
+| Solana | `solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp` | `EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v` | [payai.network](https://facilitator.payai.network) |
+
+EVM signing costs no gas. On Solana the facilitator pays the transaction fee.
 
 **x402 pricing (data endpoints):**
 
@@ -395,6 +417,129 @@ console.log(data.data.message);
 - For narratives/summaries: present the narrative text with source links.
 - For the chat endpoint: display the AI response cleanly.
 - If the response contains an error, explain what went wrong and suggest fixes.
+
+### Step 2c: Market Intelligence — picking the right endpoint
+
+The data endpoints split into two tiers. Picking the wrong tier is the most common integration
+mistake.
+
+| Tier | Endpoints | What comes back |
+|---|---|---|
+| **Measurement** | `smart-stats`, `trending-cas/*`, `trending-tokens`, `top-mentions`, `keyword-mentions`, `token-news` | Counts, engagement metrics, links, account metadata. **Your system interprets them.** |
+| **Interpretation** | `chat`, `chat/stream`, `event-summary`, `trending-narratives` | Written analysis or summaries, with source links where available. |
+
+> **Measurement endpoints return no raw tweet text and no sentiment field.** They measure
+> *attention*, not *meaning*. If the user needs post content, they must fetch the linked post
+> with their own X API bearer token. If they need meaning, route to Chat, Event Summary, or
+> Trending Narratives instead of trying to infer it from counts.
+
+**Choose the surface:**
+
+| User needs | Start here |
+|---|---|
+| A market question answered in plain language | `POST /v2/chat` |
+| What is moving right now | `trending-tokens`, `trending-cas/*` |
+| Who amplified a token or keyword | `top-mentions`, `keyword-mentions`, `smart-stats` |
+| A defensible cause or theme behind a move | `token-news`, `event-summary`, `trending-narratives` |
+| Continuous watching + notify/execute on a condition | Auto (Step 3) |
+
+#### Agent playbooks (endpoint chains)
+
+Single calls answer questions; chains produce signals. These are the documented combinations:
+
+| Play | Chain | Why it works |
+|---|---|---|
+| **Lead time** | `trending-cas/telegram` → `trending-cas/twitter` | Telegram tends to lead; Twitter confirms. A CA in the first and not yet the second is early. |
+| **Trust-weighted mentions** | `keyword-mentions` → `smart-stats` | `keyword-mentions` yields `account.username`; `smart-stats` says whether that account has real reach. |
+| **Move + amplification** | `trending-tokens` → `top-mentions` | Find what moved, then see who drove it. |
+| **Theme → instrument** | `trending-narratives` → `trending-tokens` | Turn a narrative into specific tickers to watch. |
+| **Move + cause** | `token-news` → `event-summary` | Attach a written cause to a price/attention move. |
+| **Question + evidence** | `chat` → targeted data endpoint | Chat gives the conclusion; the data endpoint gives numbers to verify it. |
+
+When ranking accounts from `smart-stats`, use **ratios** (smart followers ÷ followers, average
+reach ÷ followers), not absolute counts — the endpoint returns raw metrics, not a reputation
+score.
+
+#### Chat — JSON vs streaming
+
+| Surface | Endpoint | Plan | Use when |
+|---|---|---|---|
+| API key JSON | `POST /v2/chat` | Grow+ or PAYG | Client cannot consume SSE, or wants one complete JSON answer |
+| API key SSE | `POST /v2/chat/stream` | **PAYG or Enterprise** | Client can consume SSE and wants incremental output |
+| x402 JSON | `POST /x402/v2/chat` | Pay-per-request | Wallet-based agent, no API key |
+
+Both surfaces take the **same request body**. `analysisType` decides the mode:
+
+| Type | Use for | Required fields |
+|---|---|---|
+| `chat` | Open-ended questions | `message` |
+| `macro` | Broad market conditions | none |
+| `summary` | Fast pulse check | none |
+| `tokenIntro` | What a token is and its narrative | `assetMetadata.symbol` **or** `assetMetadata.chain` + `assetMetadata.contractAddress` |
+| `tokenAnalysis` | Entries, exits, market + on-chain context | same as `tokenIntro` |
+| `accountAnalysis` | Vet an account's reach and agenda | `assetMetadata.username` |
+
+`message` is **required only for `analysisType: "chat"`** — the other modes use the mode plus
+`assetMetadata` and ignore free-form `message`. Omit `sessionId` to start a thread; pass the
+returned `sessionId` back to continue it.
+
+**Speed:** `fast` (5 credits, shallower), `expert` (18 credits, **default**), and `adaptive`
+(Elfa chooses) — `adaptive` is available on `/v2/chat` but **not** on `/x402/v2/chat`.
+
+**SSE event types on `/v2/chat/stream`** (each arrives as a `data:` payload with a `type`):
+
+| Event | Payload |
+|---|---|
+| `session_info` | `sessionId`, `analysisType` |
+| `title` | generated session/analysis title |
+| `text` | incremental Markdown chunk |
+| `text_complete` | incremental text finished |
+| `status` | progress update (e.g. "Searching mentions…") |
+| `credits` | `creditsConsumed` |
+| `complete` | final `sessionId`, `success`, `creditsConsumed` |
+| `invalid_request` | query rejected by safety checks |
+| `error` | stream failure |
+
+A `: keep-alive` comment may arrive during long gaps. The stream terminates with
+`data: [DONE]`. Returns `403` if the key is not PAYG or Enterprise.
+
+```bash
+curl -sN -X POST "https://api.elfa.ai/v2/chat/stream" \
+  -H "x-elfa-api-key: $ELFA_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"analysisType":"chat","message":"Why is BTC moving today?","speed":"expert"}'
+```
+
+#### Market Events (beta)
+
+`GET /v2/data/market-events` returns impact-scored, deduplicated market events with supporting
+source documents — useful when you want structured events rather than raw mentions.
+
+> **Beta and access-gated.** Not enabled by default: a key without beta access gets `403`.
+> Email sales@elfa.ai to request it. The path and response contract may change — verify
+> against [docs.elfa.ai](https://docs.elfa.ai) before building on it. API-key mode only.
+
+| Param | Type | Notes |
+|---|---|---|
+| `entities` | string (repeatable) | Filter by entity |
+| `from` / `to` | RFC 3339 timestamp | Inclusive bounds |
+| `limit` | integer | `1`–`200`, default `50` |
+| `cursor` | string | Opaque cursor from `pagination.nextCursor` |
+
+Each item carries `id`, `createdAt`, `alertAction` (`alert` \| `monitor`), `impactScore`
+(`0`–`100`), `confidence` (`0`–`1`), `title` / `narrative` / `why`, `entities`, `tokens`,
+`eventType`, `timeSensitivity`, `evidenceStrength`, `sourceQuality`, `novelty`, and
+`sourceDocuments` (`id` + HTTPS `link` only — no tweet text, media, author, or metrics).
+Pagination is under `data.pagination` (`limit`, `nextCursor`, `hasMore`).
+
+#### Health check
+
+`GET /v2/ping` needs **no** authentication — use it to confirm reachability before debugging
+credential problems.
+
+```bash
+curl -s https://api.elfa.ai/v2/ping
+```
 
 ### Step 3: Auto — Condition Engine and Trigger Pipeline
 
@@ -977,7 +1122,7 @@ Recommended starting points:
 | `type` | Required `params` | Optional `params` |
 |---|---|---|
 | `notify` | `message` (1–1000 chars) | — |
-| `webhook` | `url` (https only, allowlisted host) | `allNotifications` (default `false`) |
+| `webhook` | `url` (https only, allowlisted host) | `signingSecret` (write-only — **set this in production**), `allNotifications` (default `false`) |
 | `telegram_bot` | `botToken`, `chatId` | `allNotifications` (default `false`) |
 | `market_order` / `limit_order` | `exchange` (`hyperliquid` / `gmx` / `binance` / `pacifica`), `symbol`, `side` (`buy` / `sell`), and exactly one of `size` / `amount` / `positionSizePercent` (+ `price` for limit) | `reduceOnly`, `leverage`, `marginType` (`cross` / `isolated`), `tp`, `sl` — optional-param support varies by venue; see [Trade execution](#trade-execution-market_order--limit_order) |
 | `llm` | `objective` for standalone LLM work, or `action` + `callback.action` for chained follow-up | `action` ∈ `chat` / `summary` / `macro` / `accountAnalysis` / `tokenDiscovery` / `tokenAnalysis`; `speed` (`fast` / `expert`), per-action extras |
@@ -1795,12 +1940,50 @@ a stream fails after it has started, it emits `event: error` with `{"code":"STRE
 
 #### Webhook signature verification
 
+**Set an explicit `signingSecret` on every production webhook.** It is a `webhook` action
+param, write-only — Elfa stores it for delivery signing and never returns it in query,
+execution, webhook, SSE, or LLM-callback payloads. **Without it, signature headers may be
+absent entirely** depending on access mode and server configuration, so a receiver that
+requires signatures will reject every delivery.
+
+```json
+{
+  "stepId": "step_1",
+  "type": "webhook",
+  "params": {
+    "url": "https://your-runner.example/auto/events",
+    "signingSecret": "<openssl rand -hex 32>",
+    "allNotifications": true
+  }
+}
+```
+
+LLM callback webhooks take the same destination params under `params.callback.action.params`.
+
+**Which secret to use — three distinct secrets, never interchange them:**
+
+| Secret | Direction | Purpose |
+|---|---|---|
+| `x-elfa-api-key` | you → Elfa | Authenticates your client |
+| `ELFA_HMAC_SECRET` | you → Elfa | Signs your *requests* to Elfa (Auto trade mutations, exchange linking) |
+| `webhook.params.signingSecret` | Elfa → you | Signs Elfa's outbound webhook *deliveries* to your server |
+
+Generate a separate high-entropy secret per webhook action (`openssl rand -hex 32`). Do **not**
+reuse the API key or the request-HMAC secret here.
+
 Signing inputs:
 
 ```
-signing_key = SHA256(your_secret)
-expected    = HMAC_SHA256(signing_key, timestamp + "." + eventId + "." + rawBody)
+expected = HMAC_SHA256(signingSecret, timestamp + "." + eventId + "." + rawBody)
 ```
+
+> **The `signingSecret` is the HMAC key directly — do not hash it first.** Earlier revisions
+> of this skill documented `HMAC_SHA256(SHA256(secret), ...)`. That is wrong for explicit
+> signing secrets and will fail verification.
+>
+> **Legacy x402/agent fallback:** if an x402/agent webhook omits `signingSecret`, older
+> deliveries may be signed with `SHA256(x-elfa-agent-secret)` as the key. Treat that as a
+> legacy fallback, not a supported setup — set an explicit `signingSecret` instead.
 
 **Node.js verification:**
 
@@ -1808,19 +1991,26 @@ expected    = HMAC_SHA256(signing_key, timestamp + "." + eventId + "." + rawBody
 import crypto from "crypto";
 
 export function verifyAutoWebhook(
-  secret: string,
+  signingSecret: string,
   rawBody: string,
   signatureHeader: string,
   timestamp: string,
   eventId: string,
 ): boolean {
   if (!signatureHeader?.startsWith("v1=")) return false;
-  const given = signatureHeader.slice(3);
-  const signingKey = crypto.createHash("sha256").update(secret).digest();
+  const givenHex = signatureHeader.slice(3);
+  if (!/^[0-9a-f]{64}$/i.test(givenHex)) return false;
+
   const payload = `${timestamp}.${eventId}.${rawBody}`;
-  const expected = crypto.createHmac("sha256", signingKey).update(payload).digest("hex");
+  const expectedHex = crypto
+    .createHmac("sha256", signingSecret)
+    .update(payload)
+    .digest("hex");
+
+  const given = Buffer.from(givenHex, "hex");
+  const expected = Buffer.from(expectedHex, "hex");
   if (given.length !== expected.length) return false;
-  return crypto.timingSafeEqual(Buffer.from(given), Buffer.from(expected));
+  return crypto.timingSafeEqual(given, expected);
 }
 ```
 
@@ -1980,7 +2170,8 @@ Full detail: [Notifications](https://docs.elfa.ai/auto/notifications) |
 | Symptom | Likely Cause | Fix |
 |---|---|---|
 | `400` / `401` when polling or streaming | Missing/invalid API key or auth headers | Send `x-elfa-api-key`; include HMAC headers where required |
-| Webhook signature mismatch | Signing wrong payload (not raw body) or wrong secret | Verify with `timestamp + "." + eventId + "." + rawBody` and `SHA256(secret)` key |
+| Webhook signature mismatch | Signing wrong payload (not raw body), or hashing the secret before use | Key is the **raw** `signingSecret`, payload is `timestamp + "." + eventId + "." + rawBody`. Do not use `SHA256(secret)` as the key |
+| No signature headers on webhook deliveries | No explicit `signingSecret` set on the webhook action | Set `params.signingSecret` and recreate the query |
 | Duplicate downstream actions | No idempotency on event processing | Dedupe by `eventId` before enqueue/execute |
 | Event received but agent does nothing | Ingress processes inline and times out | ACK fast, push to queue, process in worker |
 | SSE disconnect/reconnect loops | No retry/backoff or unstable consumer | Add reconnect backoff + heartbeat monitoring |
@@ -2259,140 +2450,6 @@ and pagination.
 
 Executions are API-key-mode only. Not available via x402.
 
-### Step 3b: Trade — Direct Execution
-
-Trade is a **direct, synchronous order API** on `/v2/trade/*`. You call an endpoint, it
-executes against the venue immediately, and the response carries the fill. No condition
-engine, no query, no trigger — one request, one order.
-
-Full Trade docs: [docs.elfa.ai/trade/overview](https://docs.elfa.ai/trade/overview)
-
-#### Trade vs Auto — which to use
-
-Both place orders for the **same linked account** with the **same API key + HMAC** auth. They
-differ in _when_ the order fires — and in which venues they reach: Trade executes on
-`hyperliquid` and `gmx`, while Auto additionally supports `binance` and `pacifica`:
-
-| | **Trade** (`/v2/trade/*`) | **Auto** (`/v2/auto/*`) |
-|---|---|---|
-| Execution | Synchronous — fires on the request | Conditional — fires when a trigger resolves true |
-| You send | An order to execute now | A query (conditions + actions) to evaluate over time |
-| State created | None (proxied straight to the venue) | A persistent query you poll/stream |
-| Best for | "Place this order now", bots that decide off-platform | "Watch for X, then trade", alerting + automation |
-
-Use **Trade** when the agent has already decided and wants to act now. Use **Auto** when you
-want Elfa to watch the market and act for you.
-
-#### Access model
-
-- `x-elfa-api-key` on **every** request (including previews).
-- The key must be **Privy-linked** (enable Auto in the [Developer Portal](https://dev.elfa.ai/)).
-  Unlinked keys get `403`. Same prerequisite as Auto — there is no separate Trade enablement.
-- An **active exchange connection** for the target venue must exist, or the write fails at
-  execution. Verify with `GET /v2/auto/exchanges` before placing orders.
-- **HMAC required on every write** (place / cancel / modify / close / tpsl); previews are
-  unsigned. Unlike Auto, there is **no notification-only bypass** — every Trade write is signed.
-- Trade is **not** available in x402 keyless mode.
-
-#### HMAC signing (Trade mount)
-
-Identical scheme to Auto, with **one critical difference: the signed `mounted_path` is
-relative to the `/v2/trade` mount**, not `/v2/auto` and not the full URL path.
-
-```
-timestamp + method + mounted_path + body
-```
-
-- Request URL: `/v2/trade/orders` → signed path: `/orders`
-- Request URL: `/v2/trade/orders/cancel` → signed path: `/orders/cancel`
-- Request URL: `/v2/trade/positions/close` → signed path: `/positions/close`
-- Request URL: `/v2/trade/positions/tpsl` → signed path: `/positions/tpsl`
-
-Signing `/v2/trade/orders` instead of `/orders` fails verification. Replay window: ±30s.
-Send a per-request UUID in `x-correlation-id` (optional but recommended — used for tracing;
-the backend does **not** de-duplicate, so pair it with a client-side guard to avoid double
-submissions).
-
-#### Sizing an order
-
-Order and close payloads accept three **mutually-exclusive** ways to size — provide exactly one:
-
-| Field | Type | Meaning |
-|---|---|---|
-| `size` | `string` | Base units (contracts), e.g. `"0.1"` BTC |
-| `amount` | `string` | Quote/USD notional, e.g. `"2500"` |
-| `positionSizePercent` | `number` | Percent of available balance, `(0, 100]` |
-
-All sizes and prices are **decimal strings**; only `leverage`, `positionSizePercent`, and
-`closePercent` are numbers. Venue notes: `reduceOnly` / `marginType` are **Hyperliquid-only**
-(rejected for GMX); Hyperliquid has a `10` USDC minimum notional, GMX has none.
-
-#### Place an order (preview → sign → place)
-
-Always preview unfamiliar payloads first (free, unsigned), then place (1 credit, signed):
-
-```bash
-# 1. Preview (free, no HMAC)
-curl -sS -X POST https://api.elfa.ai/v2/trade/orders/preview \
-  -H "x-elfa-api-key: ${ELFA_API_KEY}" \
-  -H "Content-Type: application/json" \
-  -d '{"exchange":"hyperliquid","symbol":"BTC","side":"buy","orderType":"market","amount":"25"}'
-# -> { "success": true, "wouldExecute": true }
-
-# 2. Place (1 credit, HMAC required — sign the MOUNTED path "/orders")
-TIMESTAMP=$(date +%s)
-BODY='{"exchange":"hyperliquid","symbol":"BTC","side":"buy","orderType":"market","amount":"25"}'
-SIGNATURE=$(echo -n "${TIMESTAMP}POST/orders${BODY}" | \
-  openssl dgst -sha256 -hmac "${ELFA_HMAC_SECRET}" -hex | awk '{print $2}')
-
-curl -sS -X POST https://api.elfa.ai/v2/trade/orders \
-  -H "x-elfa-api-key: ${ELFA_API_KEY}" \
-  -H "x-elfa-signature: ${SIGNATURE}" \
-  -H "x-elfa-timestamp: ${TIMESTAMP}" \
-  -H "x-correlation-id: $(uuidgen)" \
-  -H "Content-Type: application/json" \
-  -d "${BODY}"
-# -> { "success": true, "orderId": "123456789", "filledSize": "0.0004", "avgFillPrice": "62500" }
-```
-
-With the bundled helper (handles `/v2/trade` signing automatically when `ELFA_HMAC_SECRET` is set):
-
-```bash
-./scripts/elfa_call.sh /v2/trade/orders/preview -d '{"exchange":"hyperliquid","symbol":"BTC","side":"buy","orderType":"market","amount":"25"}'
-./scripts/elfa_call.sh /v2/trade/orders -d '{"exchange":"hyperliquid","symbol":"BTC","side":"buy","orderType":"market","amount":"25"}' --hmac-secret "$ELFA_HMAC_SECRET"
-```
-
-#### Manage the position
-
-All write routes sign the same way — just change `mounted_path` and `body`:
-
-- **Attach TP/SL** — `POST /v2/trade/positions/tpsl` (`{ "exchange": "...", "symbol": "BTC", "tp": "72000", "sl": "60000" }`)
-- **Close (full or partial)** — `POST /v2/trade/positions/close` (`{ ..., "orderType": "market", "closePercent": 100 }`)
-- **Cancel a resting order** — `POST /v2/trade/orders/cancel` (`{ ..., "orderId": "123456789" }`)
-- **Modify a resting order** — `POST /v2/trade/orders/modify` (`{ ..., "orderId": "123456789", "price": "61000" }`)
-
-#### Errors and reconciliation
-
-Failures carry `success: false` and a structured `error` `{ code, message }` (e.g.
-`INSUFFICIENT_MARGIN`, `TRADE_SERVICE_UNAVAILABLE`).
-
-| Status | Meaning | Billed? |
-|---|---|---|
-| `200` | Success — order executed / action accepted | Yes (writes that cost credits) |
-| `400` | Missing or invalid parameters | No |
-| `401` | Missing/invalid API key, signature, timestamp, or clock skew | No |
-| `403` | API key not linked for trading | No |
-| `422` | Order rejected by the venue (e.g. insufficient margin) | No |
-| `502` | Transport / trade-service failure (`TRADE_SERVICE_UNAVAILABLE`), incl. timeout | No |
-
-> **Reconcile before retrying a `502`.** A write blocks up to the trade service's 60-second
-> timeout. On timeout the order **may still have landed** at the venue, and there is no
-> server-side idempotency lock — a blind retry can double-fill. Read your open
-> orders/positions from the venue first and only resubmit if the order is genuinely absent.
-
-Trade executes orders but does **not** proxy balances, positions, or PnL — read those from the
-venue directly (see [Trading Execution](https://docs.elfa.ai/auto/trading-execution)).
-
 ### Step 4: Generating code snippets
 
 When the user wants integration help, generate correct, production-ready code.
@@ -2420,8 +2477,12 @@ See the [Elfa API documentation](https://docs.elfa.ai) for the full parameter sp
 - It supports multiple `analysisType` values: `chat`, `macro`, `summary`, `tokenIntro`,
   `tokenAnalysis`, `accountAnalysis`
 - Session management via `sessionId` for multi-turn conversations
-- Different `assetMetadata` requirements per analysis type
-- Two speed modes: `fast` and `expert`
+- Different `assetMetadata` requirements per analysis type (`message` is required only for
+  `analysisType: "chat"`)
+- Three speed modes: `fast`, `expert` (default), and `adaptive` (`/v2/chat` only)
+- Two transports: `POST /v2/chat` (JSON) and `POST /v2/chat/stream` (SSE, PAYG/Enterprise) —
+  same body, different plan gate. See [Step 2c](#chat--json-vs-streaming) for the SSE event
+  types.
 
 **Auto code generation guidance:**
 - Always include the validate → create flow (never create without validating first)
@@ -2441,23 +2502,37 @@ Aggregation endpoints (trending-tokens, trending-cas, top-mentions, token-news) 
 `page` + `pageSize`. The keyword-mentions endpoint uses cursor-based pagination instead
 (`cursor` + `limit`).
 
-Defaults and maximums:
+**Defaults differ per endpoint — do not assume a global default.** From the current spec:
 
-| Parameter | Default | Max |
-|---|---|---|
-| `pageSize` | `20` (data) / `50` (aggregations) | `100` |
-| `limit` (keyword-mentions cursor) | `20` | `30` |
-| `page` | `1` | — |
-| `timeWindow` | `24h` | — |
+| Endpoint | `timeWindow` | `page` | `pageSize` / `limit` | Other |
+|---|---|---|---|---|
+| `trending-tokens` | `7d` | `1` | `50` | `minMentions` (default `5`) |
+| `trending-cas/twitter` · `trending-cas/telegram` | `7d` | `1` | `50` | `minMentions` (default `5`) |
+| `top-mentions` | `1h` | `1` | `10` | `ticker` **required**, `reposts` |
+| `token-news` | `7d` | `1` | `20` | `coinIds`, `reposts` |
+| `keyword-mentions` | `7d` | — (cursor) | `limit` `20`, **max 30** | `keywords`, `accountName`, `searchType`, `cursor`, `reposts` |
+| `event-summary` | `7d` | — | — | `keywords` **required**, `searchType` (default `or`) |
+| `trending-narratives` | — | — | — | `timeFrame` (`day` \| `week`, default `day`), `maxNarratives` (`7`), `maxTweetsPerNarrative` (`5`) |
+| `smart-stats` | — | — | — | `username` **required** |
+
+Every endpoint above except `trending-narratives` and `smart-stats` also accepts `from`/`to`
+unix timestamps, which take priority over `timeWindow`.
 
 **Per-endpoint parameter notes:**
-- **`keyword-mentions`** — accepts `keywords`, `accountName`, `searchType` (`or`), `from`/`to`,
-  `limit`, `cursor`. Provide either `keywords` OR `accountName` (or both); `accountName`
-  filters mentions by a specific account (e.g. `accountName=elonmusk`).
-- **`token-news`** — accepts `coinIds`, `from`/`to`, `page`, `pageSize` (default `20`). V2
-  always returns news mentions (no `isNews` parameter).
-- **`top-mentions`** — accepts `ticker`, `timeWindow`, `page`, `pageSize`. Account details are
-  always included (no `includeAccountDetails` parameter).
+- **`keyword-mentions`** — provide either `keywords` (up to 5, comma-separated) OR
+  `accountName` (or both); `accountName` filters mentions by a specific account (e.g.
+  `accountName=elonmusk`). `searchType` accepts **`and`** (all terms must be present) or
+  **`or`** (any term matches). Cursor-paginated — pass `metadata.cursor` from the previous
+  response as `cursor`. Returns `account.username`, which feeds directly into `smart-stats`.
+- **`event-summary`** — `keywords` is **required**; `searchType` defaults to `or`.
+- **`token-news`** — V2 always returns news mentions (no `isNews` parameter).
+- **`top-mentions`** — `ticker` is **required**. Account details are always included (no
+  `includeAccountDetails` parameter).
+- **`smart-stats`** — the query param is `username`, not `accountName`.
+- **`minMentions`** (trending-tokens / trending-cas) — floor on mention count; raise it to cut
+  long-tail noise.
+- **`reposts`** (keyword-mentions / top-mentions / token-news) — boolean toggle for including
+  repost activity.
 
 **Ticker format (top-mentions):**
 The `ticker` parameter behavior changes based on whether you include the `$` prefix:
@@ -2471,6 +2546,7 @@ Use `$` when you want only cashtag-specific mentions. Omit `$` for a more inclus
 - Event summary: 5 credits ($0.045 via x402)
 - Trending narratives: 5 credits ($0.045 via x402)
 - Chat: fast = 5 credits ($0.045), expert = 18 credits ($0.162) via x402
+- `/v2/ping`, `/v2/key-status`: free
 
 **Auto query lifecycle:**
 - **Validate before create (recommended):** Call `POST /v2/auto/queries/validate` first to preview
@@ -2487,12 +2563,20 @@ Use `$` when you want only cashtag-specific mentions. Omit `$` for a more inclus
   inform the user and provide the code snippet instead.
 - Always use the v2 endpoints (paths starting with `/v2/` or `/x402/v2/`).
 - For experimental endpoints (trending-tokens, smart-stats), mention that behavior may
-  change without notice.
+  change without notice. `/v2/data/market-events` is **beta and access-gated** — its path and
+  contract may change.
+- Measurement endpoints return **no raw tweet text and no sentiment field** — do not promise
+  either. Fetching post content requires the user's own X API key.
+- The direct Trade API (`/v2/trade/*`) has been **withdrawn** from the published spec and
+  docs. Route order execution through Auto trade actions.
 - When the user asks about pricing or API key tiers, direct them to
   https://go.elfa.ai/claude-skills for full details on plans and pricing.
 - API-key request rate limits are per tier: Free / Chill / PAYG = **60 requests/min**,
   Grow = **120 requests/min** (Enterprise custom). These are independent of credit balances.
+  A `429` response should be retried honoring `Retry-After`.
 - x402 is currently in beta. Rate limits: 1,000 requests per 60s window (per client IP).
+- Install/update this skill with `npx skills add elfa-ai/skills`. API keys come from the
+  [Elfa Developer Portal](https://go.elfa.ai/dev).
 - x402 and API key credits are independent — they do not overlap or share balances.
 - For x402 documentation and setup, refer users to https://docs.elfa.ai/x402-payments.
 - For Auto documentation, refer users to https://docs.elfa.ai/auto/overview.
