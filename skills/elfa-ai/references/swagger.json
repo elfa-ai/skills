@@ -1440,6 +1440,83 @@
 				"type": "object",
 				"additionalProperties": false
 			},
+			"ApiKeyAutoConditionValue": {
+				"anyOf": [
+					{
+						"type": "string"
+					},
+					{
+						"type": "number",
+						"format": "double"
+					},
+					{
+						"type": "boolean"
+					}
+				],
+				"nullable": true
+			},
+			"ApiKeyAutoConditionState": {
+				"properties": {
+					"index": {
+						"type": "number",
+						"format": "double",
+						"description": "Zero-based condition index from the flattened EQL condition tree"
+					},
+					"source": {
+						"type": "string",
+						"description": "Data source that produced the value"
+					},
+					"method": {
+						"type": "string",
+						"description": "Source method that was evaluated"
+					},
+					"args": {
+						"$ref": "#/components/schemas/JsonObject",
+						"description": "Public condition arguments with internal source identifiers removed"
+					},
+					"currentValue": {
+						"$ref": "#/components/schemas/ApiKeyAutoConditionValue",
+						"description": "Latest observed value at evaluation time"
+					},
+					"targetValue": {
+						"$ref": "#/components/schemas/ApiKeyAutoConditionValue",
+						"description": "Threshold or comparison value from the EQL condition"
+					},
+					"operator": {
+						"type": "string",
+						"description": "Comparison operator"
+					},
+					"isMet": {
+						"type": "boolean",
+						"description": "Whether this condition was met in the latest evaluation"
+					},
+					"lastUpdated": {
+						"type": "string",
+						"nullable": true,
+						"description": "ISO timestamp for the condition value"
+					},
+					"reason": {
+						"type": "string",
+						"description": "Optional evaluator explanation or error reason"
+					},
+					"conversationSessionId": {
+						"type": "string",
+						"nullable": true,
+						"description": "Linked LLM conversation session, when the condition used an LLM run"
+					},
+					"runId": {
+						"type": "string",
+						"nullable": true,
+						"description": "Linked Auto/LLM run id, when available"
+					},
+					"cacheHit": {
+						"type": "boolean",
+						"description": "Whether the condition value came from cache"
+					}
+				},
+				"type": "object",
+				"additionalProperties": false
+			},
 			"ApiKeyPollQueryLatestEvaluation": {
 				"properties": {
 					"evaluatedAt": {
@@ -1447,21 +1524,240 @@
 						"nullable": true,
 						"description": "ISO timestamp of the latest evaluation"
 					},
+					"conditionStates": {
+						"items": {
+							"$ref": "#/components/schemas/ApiKeyAutoConditionState"
+						},
+						"type": "array",
+						"description": "Per-condition values from the latest evaluation snapshot"
+					},
 					"wouldTriggerNow": {
 						"type": "boolean",
 						"nullable": true,
 						"description": "Whether the latest evaluation would trigger at that time"
+					},
+					"matchingConditions": {
+						"type": "number",
+						"format": "double",
+						"nullable": true,
+						"description": "Number of conditions that matched in the latest evaluation"
+					},
+					"totalConditions": {
+						"type": "number",
+						"format": "double",
+						"nullable": true,
+						"description": "Total number of conditions evaluated"
 					}
 				},
 				"required": [
 					"evaluatedAt",
-					"wouldTriggerNow"
+					"conditionStates",
+					"wouldTriggerNow",
+					"matchingConditions",
+					"totalConditions"
 				],
+				"type": "object",
+				"additionalProperties": false
+			},
+			"ApiKeyAutoExecutionDetails": {
+				"properties": {
+					"trade": {
+						"allOf": [
+							{
+								"$ref": "#/components/schemas/JsonObject"
+							}
+						],
+						"nullable": true,
+						"description": "Trade action summary, when the execution placed or attempted an order"
+					},
+					"notification": {
+						"allOf": [
+							{
+								"$ref": "#/components/schemas/JsonObject"
+							}
+						],
+						"nullable": true,
+						"description": "Notification/webhook/Telegram delivery summary, when applicable"
+					},
+					"llm": {
+						"allOf": [
+							{
+								"$ref": "#/components/schemas/JsonObject"
+							}
+						],
+						"nullable": true,
+						"description": "LLM action summary, when applicable"
+					},
+					"auto": {
+						"allOf": [
+							{
+								"$ref": "#/components/schemas/JsonObject"
+							}
+						],
+						"nullable": true,
+						"description": "Auto action summary, when applicable"
+					},
+					"script": {
+						"allOf": [
+							{
+								"$ref": "#/components/schemas/JsonObject"
+							}
+						],
+						"nullable": true,
+						"description": "Script action summary, when applicable"
+					}
+				},
+				"type": "object",
+				"additionalProperties": false
+			},
+			"ApiKeyAutoExecutionError": {
+				"properties": {
+					"code": {
+						"type": "string",
+						"nullable": true,
+						"description": "Stable error code"
+					},
+					"message": {
+						"type": "string",
+						"nullable": true,
+						"description": "Human-readable error message"
+					}
+				},
+				"type": "object",
+				"additionalProperties": {}
+			},
+			"ApiKeyAutoTriggerCondition": {
+				"properties": {
+					"source": {
+						"type": "string",
+						"description": "Data source that fired"
+					},
+					"method": {
+						"type": "string",
+						"description": "Source method that fired"
+					},
+					"args": {
+						"$ref": "#/components/schemas/JsonObject",
+						"description": "Public condition arguments with internal source identifiers removed"
+					},
+					"operator": {
+						"type": "string",
+						"description": "Comparison operator"
+					},
+					"value": {
+						"$ref": "#/components/schemas/ApiKeyAutoConditionValue",
+						"description": "Threshold or comparison value from the EQL condition"
+					}
+				},
+				"required": [
+					"source"
+				],
+				"type": "object",
+				"additionalProperties": false
+			},
+			"ApiKeyAutoTriggerMatch": {
+				"properties": {
+					"observedValue": {
+						"$ref": "#/components/schemas/ApiKeyAutoConditionValue",
+						"description": "Numeric/string/boolean value observed when the trigger fired"
+					},
+					"url": {
+						"type": "string",
+						"description": "Public source URL for semantic tweet/news/Telegram matches, when available"
+					},
+					"mentionedAt": {
+						"type": "string",
+						"description": "Source event timestamp for semantic matches"
+					},
+					"confidence": {
+						"type": "number",
+						"format": "double",
+						"description": "Semantic match confidence, when available"
+					},
+					"accountHandle": {
+						"type": "string",
+						"description": "Public account handle for news/tweet matches, when available"
+					},
+					"chatUsername": {
+						"type": "string",
+						"description": "Public Telegram chat username, when available"
+					},
+					"chatTitle": {
+						"type": "string",
+						"description": "Public Telegram chat title, when available"
+					},
+					"messageId": {
+						"type": "string",
+						"description": "Public Telegram message id, when available"
+					},
+					"messageIds": {
+						"items": {
+							"type": "string"
+						},
+						"type": "array",
+						"description": "Public Telegram grouped message ids, when available"
+					},
+					"groupId": {
+						"type": "string",
+						"description": "Public Telegram group id, when available"
+					}
+				},
+				"type": "object",
+				"additionalProperties": {}
+			},
+			"ApiKeyAutoMatchedCondition": {
+				"properties": {
+					"condition": {
+						"$ref": "#/components/schemas/ApiKeyAutoTriggerCondition",
+						"description": "Public condition definition that matched"
+					},
+					"match": {
+						"$ref": "#/components/schemas/ApiKeyAutoTriggerMatch",
+						"description": "Public match details, including observedValue for numeric conditions"
+					}
+				},
+				"required": [
+					"condition"
+				],
+				"type": "object",
+				"additionalProperties": false
+			},
+			"ApiKeyAutoTriggerPayload": {
+				"properties": {
+					"type": {
+						"type": "string",
+						"description": "Trigger category, e.g. price, poll, cron, or event"
+					},
+					"time": {
+						"type": "string",
+						"description": "ISO timestamp when the trigger fired"
+					},
+					"matchedConditions": {
+						"items": {
+							"$ref": "#/components/schemas/ApiKeyAutoMatchedCondition"
+						},
+						"type": "array",
+						"description": "Conditions that were met when the trigger fired"
+					}
+				},
 				"type": "object",
 				"additionalProperties": false
 			},
 			"ApiKeyPollQueryExecution": {
 				"properties": {
+					"triggerTime": {
+						"type": "string",
+						"description": "ISO timestamp when the Auto query fired"
+					},
+					"conditionsMet": {
+						"type": "number",
+						"format": "double",
+						"description": "Number of conditions met when the Auto query fired"
+					},
+					"trigger": {
+						"$ref": "#/components/schemas/ApiKeyAutoTriggerPayload",
+						"description": "Canonical public trigger context for why the query fired"
+					},
 					"id": {
 						"type": "string",
 						"description": "Execution identifier"
@@ -1478,11 +1774,21 @@
 						"type": "string",
 						"description": "Execution status"
 					},
+					"details": {
+						"$ref": "#/components/schemas/ApiKeyAutoExecutionDetails",
+						"description": "Public execution details summary"
+					},
 					"createdAt": {
 						"type": "string",
 						"description": "Execution creation timestamp"
 					},
 					"error": {
+						"allOf": [
+							{
+								"$ref": "#/components/schemas/ApiKeyAutoExecutionError"
+							}
+						],
+						"nullable": true,
 						"description": "Optional execution error object from Athena (when present)"
 					}
 				},
@@ -1655,15 +1961,145 @@
 				"type": "object",
 				"additionalProperties": {}
 			},
-			"ApiKeyListExecutionsResponse": {
-				"properties": {},
+			"ApiKeyAutoExecution": {
+				"properties": {
+					"triggerTime": {
+						"type": "string",
+						"description": "ISO timestamp when the Auto query fired"
+					},
+					"conditionsMet": {
+						"type": "number",
+						"format": "double",
+						"description": "Number of conditions met when the Auto query fired"
+					},
+					"trigger": {
+						"$ref": "#/components/schemas/ApiKeyAutoTriggerPayload",
+						"description": "Canonical public trigger context for why the query fired"
+					},
+					"id": {
+						"type": "string",
+						"description": "Execution identifier"
+					},
+					"queryId": {
+						"type": "string",
+						"description": "Query identifier"
+					},
+					"type": {
+						"type": "string",
+						"description": "Execution type"
+					},
+					"status": {
+						"type": "string",
+						"description": "Execution status"
+					},
+					"details": {
+						"$ref": "#/components/schemas/ApiKeyAutoExecutionDetails",
+						"description": "Public execution details summary"
+					},
+					"error": {
+						"allOf": [
+							{
+								"$ref": "#/components/schemas/ApiKeyAutoExecutionError"
+							}
+						],
+						"nullable": true,
+						"description": "Optional execution error object from Athena (when present)"
+					},
+					"createdAt": {
+						"type": "string",
+						"description": "Execution creation timestamp"
+					},
+					"auditDetails": {
+						"$ref": "#/components/schemas/JsonObject",
+						"description": "Full Athena audit details; returned by the single-execution endpoint"
+					},
+					"actionSnapshot": {
+						"$ref": "#/components/schemas/JsonObject",
+						"description": "Action configuration snapshot; returned by the single-execution endpoint"
+					},
+					"executionContext": {
+						"$ref": "#/components/schemas/JsonObject",
+						"description": "Execution context with user identity stripped"
+					},
+					"externalEvents": {
+						"items": {
+							"$ref": "#/components/schemas/JsonObject"
+						},
+						"type": "array",
+						"description": "External event records linked to the execution"
+					},
+					"notificationOutbox": {
+						"items": {
+							"$ref": "#/components/schemas/JsonObject"
+						},
+						"type": "array",
+						"description": "Sanitized notification outbox delivery metadata linked to the execution"
+					},
+					"schemaVersion": {
+						"type": "number",
+						"format": "double",
+						"description": "Execution schema version"
+					},
+					"updatedAt": {
+						"type": "string",
+						"description": "Last update timestamp"
+					},
+					"finishedAt": {
+						"type": "string",
+						"nullable": true,
+						"description": "Completion timestamp, if finished"
+					}
+				},
 				"type": "object",
-				"additionalProperties": {}
+				"additionalProperties": false
+			},
+			"ApiKeyAutoPagination": {
+				"properties": {
+					"total": {
+						"type": "number",
+						"format": "double",
+						"description": "Total matching records"
+					},
+					"limit": {
+						"type": "number",
+						"format": "double",
+						"description": "Page size"
+					},
+					"offset": {
+						"type": "number",
+						"format": "double",
+						"description": "Offset used for the page"
+					},
+					"hasMore": {
+						"type": "boolean",
+						"description": "Whether another page exists"
+					}
+				},
+				"type": "object",
+				"additionalProperties": false
+			},
+			"ApiKeyListExecutionsResponse": {
+				"properties": {
+					"data": {
+						"items": {
+							"$ref": "#/components/schemas/ApiKeyAutoExecution"
+						},
+						"type": "array",
+						"description": "Execution records"
+					},
+					"pagination": {
+						"$ref": "#/components/schemas/ApiKeyAutoPagination",
+						"description": "Pagination metadata"
+					}
+				},
+				"required": [
+					"data"
+				],
+				"type": "object",
+				"additionalProperties": false
 			},
 			"ApiKeyGetExecutionResponse": {
-				"properties": {},
-				"type": "object",
-				"additionalProperties": {}
+				"$ref": "#/components/schemas/ApiKeyAutoExecution"
 			},
 			"MercuryExchange": {
 				"type": "string",
@@ -2322,54 +2758,43 @@
 						"nullable": true,
 						"description": "ISO timestamp of the latest evaluation"
 					},
+					"conditionStates": {
+						"items": {
+							"$ref": "#/components/schemas/ApiKeyAutoConditionState"
+						},
+						"type": "array",
+						"description": "Per-condition values from the latest evaluation snapshot"
+					},
 					"wouldTriggerNow": {
 						"type": "boolean",
 						"nullable": true,
 						"description": "Whether the latest evaluation would trigger at that time"
+					},
+					"matchingConditions": {
+						"type": "number",
+						"format": "double",
+						"nullable": true,
+						"description": "Number of conditions that matched in the latest evaluation"
+					},
+					"totalConditions": {
+						"type": "number",
+						"format": "double",
+						"nullable": true,
+						"description": "Total number of conditions evaluated"
 					}
 				},
 				"required": [
 					"evaluatedAt",
-					"wouldTriggerNow"
+					"conditionStates",
+					"wouldTriggerNow",
+					"matchingConditions",
+					"totalConditions"
 				],
 				"type": "object",
 				"additionalProperties": false
 			},
 			"PollQueryExecution": {
-				"properties": {
-					"id": {
-						"type": "string",
-						"description": "Execution identifier"
-					},
-					"queryId": {
-						"type": "string",
-						"description": "Query identifier"
-					},
-					"type": {
-						"type": "string",
-						"description": "Execution type"
-					},
-					"status": {
-						"type": "string",
-						"description": "Execution status"
-					},
-					"createdAt": {
-						"type": "string",
-						"description": "Execution creation timestamp"
-					},
-					"error": {
-						"description": "Optional execution error object from Athena (when present)"
-					}
-				},
-				"required": [
-					"id",
-					"queryId",
-					"type",
-					"status",
-					"createdAt"
-				],
-				"type": "object",
-				"additionalProperties": false
+				"$ref": "#/components/schemas/ApiKeyPollQueryExecution"
 			},
 			"PollQueryResponse": {
 				"properties": {
@@ -4346,7 +4771,16 @@
 											"status": "string",
 											"latestEvaluation": {
 												"evaluatedAt": "string",
-												"wouldTriggerNow": true
+												"conditionStates": [
+													{
+														"index": 1,
+														"source": "string",
+														"method": "string"
+													}
+												],
+												"wouldTriggerNow": true,
+												"matchingConditions": 1,
+												"totalConditions": 1
 											},
 											"executions": [
 												{
@@ -4384,7 +4818,7 @@
 						}
 					}
 				},
-				"description": "Check query status and execution results.\n\n### Cost\n\nFree.\n\n### Auth\n\nRequired header:\n```http\nx-elfa-api-key: <api_key>\n```\n\n### Request Example\n\nPath parameter:\n- `queryId` (string)\n\n### Response Example (200)\n\n```json\n{\n  \"queryId\": \"76e2e824-fc47-4d60-99b1-c227fbd2d3f5\",\n  \"status\": \"active\",\n  \"credits\": 0,\n  \"latestEvaluation\": {\n    \"evaluatedAt\": \"2026-04-01T12:00:00.000Z\",\n    \"wouldTriggerNow\": false\n  },\n  \"executions\": [\n    {\n      \"id\": \"a12d20ff-6cb2-433e-afed-cc2e6a0380b6\",\n      \"queryId\": \"76e2e824-fc47-4d60-99b1-c227fbd2d3f5\",\n      \"type\": \"llm\",\n      \"status\": \"failed\",\n      \"error\": {\n        \"code\": \"LLM_ACTION_UPSTREAM_ERROR\",\n        \"message\": \"Failed to execute llm action\"\n      },\n      \"createdAt\": \"2026-04-01T12:00:01.000Z\"\n    }\n  ]\n}\n```\n\n> Best practice: use polling for debugging or backfills. For production\n> delivery, prefer webhook/SSE notifications.",
+				"description": "Check query status and execution results.\n\n### Cost\n\nFree.\n\n### Auth\n\nRequired header:\n```http\nx-elfa-api-key: <api_key>\n```\n\n### Request Example\n\nPath parameter:\n- `queryId` (string)\n\n### Response Example (200)\n\n```json\n{\n  \"queryId\": \"76e2e824-fc47-4d60-99b1-c227fbd2d3f5\",\n  \"status\": \"active\",\n  \"credits\": 0,\n  \"latestEvaluation\": {\n    \"evaluatedAt\": \"2026-04-01T12:00:00.000Z\",\n    \"conditionStates\": [\n      {\n        \"index\": 0,\n        \"source\": \"price\",\n        \"method\": \"current\",\n        \"args\": { \"symbol\": \"BTC\" },\n        \"currentValue\": 97250.5,\n        \"targetValue\": 100000,\n        \"operator\": \"<\",\n        \"isMet\": true,\n        \"lastUpdated\": \"2026-04-01T12:00:00.000Z\"\n      }\n    ],\n    \"wouldTriggerNow\": true,\n    \"matchingConditions\": 1,\n    \"totalConditions\": 1\n  },\n  \"executions\": [\n    {\n      \"id\": \"a12d20ff-6cb2-433e-afed-cc2e6a0380b6\",\n      \"queryId\": \"76e2e824-fc47-4d60-99b1-c227fbd2d3f5\",\n      \"type\": \"notification\",\n      \"status\": \"success\",\n      \"details\": { \"notification\": { \"channel\": \"webhook\" } },\n      \"triggerTime\": \"2026-04-01T12:00:00.000Z\",\n      \"conditionsMet\": 1,\n      \"trigger\": {\n        \"type\": \"price\",\n        \"time\": \"2026-04-01T12:00:00.000Z\",\n        \"matchedConditions\": [\n          {\n            \"condition\": {\n              \"source\": \"price\",\n              \"method\": \"current\",\n              \"args\": { \"symbol\": \"BTC\" },\n              \"operator\": \"<\",\n              \"value\": 100000\n            },\n            \"match\": { \"observedValue\": 97250.5 }\n          }\n        ]\n      },\n      \"createdAt\": \"2026-04-01T12:00:01.000Z\"\n    }\n  ]\n}\n```\n\n`latestEvaluation` is the latest current-state snapshot. Auto Trigger\nContext (`triggerTime`, `conditionsMet`, `trigger`) explains what fired for\nan execution and uses the same public redaction boundary as outbound\ndelivery payloads.\n\n> Best practice: use polling for debugging or backfills. For production\n> delivery, prefer webhook/SSE notifications.",
 				"summary": "Poll Query",
 				"tags": [
 					"v2 Auto"
@@ -5299,7 +5733,21 @@
 									"success": {
 										"summary": "Example successful response",
 										"value": {
-											"key": {}
+											"data": [
+												{
+													"triggerTime": "string",
+													"conditionsMet": 1,
+													"trigger": {
+														"type": "string",
+														"time": "string",
+														"matchedConditions": [
+															{
+																"condition": null
+															}
+														]
+													}
+												}
+											]
 										}
 									}
 								}
@@ -5388,7 +5836,19 @@
 									"success": {
 										"summary": "Example successful response",
 										"value": {
-											"key": {}
+											"triggerTime": "string",
+											"conditionsMet": 1,
+											"trigger": {
+												"type": "string",
+												"time": "string",
+												"matchedConditions": [
+													{
+														"condition": {
+															"source": "string"
+														}
+													}
+												]
+											}
 										}
 									}
 								}
@@ -6976,7 +7436,16 @@
 											"status": "string",
 											"latestEvaluation": {
 												"evaluatedAt": "string",
-												"wouldTriggerNow": true
+												"conditionStates": [
+													{
+														"index": 1,
+														"source": "string",
+														"method": "string"
+													}
+												],
+												"wouldTriggerNow": true,
+												"matchingConditions": 1,
+												"totalConditions": 1
 											},
 											"executions": [
 												{
@@ -7014,7 +7483,7 @@
 						}
 					}
 				},
-				"description": "Check query status and execution results.\nRequires `x-elfa-agent-secret` header.\n\n**Cost:** Free",
+				"description": "Check query status and execution results.\nRequires `x-elfa-agent-secret` header.\n\n`latestEvaluation` is the latest current-state snapshot, including\n`conditionStates[]`. Execution records include Auto Trigger Context\n(`triggerTime`, `conditionsMet`, `trigger`) when the query has fired.\n\n**Cost:** Free",
 				"summary": "Poll query status",
 				"tags": [
 					"x402 Auto"

@@ -211,11 +211,22 @@ _Other:_
 
 For full parameter details, see the [Elfa API documentation](https://docs.elfa.ai).
 
-**Machine-readable manifest:** an endpoint manifest is published at
-`https://docs.elfa.ai/assets/files/endpoints.manifest-*.json` (path rotates per release) —
-each entry includes method/path, docs route, required headers, HMAC requirement with mounted
-signature path template, payment requirement, and request/response examples. Useful for
-auto-generating client code.
+### Machine-readable sources (prefer these over scraping docs pages)
+
+When you need exact endpoint metadata, load these instead of walking the docs page by page:
+
+| Source | URL | Use for |
+|---|---|---|
+| Endpoint manifest | `https://docs.elfa.ai/agent/endpoints.manifest.json` | Method/path, docs route, required headers, HMAC requirement with mounted signature path template, payment requirement, request/response examples |
+| Docs map | `https://docs.elfa.ai/llms.txt` | Canonical page map + machine-readable links |
+| Full docs text | `https://docs.elfa.ai/llms-full.txt` | Only when deeper page context is needed |
+| OpenAPI spec | bundled at `references/swagger.json` | Exact schemas, params, and defaults |
+| Latest skill | `https://raw.githubusercontent.com/elfa-ai/skills/main/skills/elfa-ai/SKILL.md` | Re-fetch this skill when you cannot install it |
+
+The manifest URL is **stable** — earlier releases served a rotating
+`assets/files/endpoints.manifest-*.json` path; use the `/agent/` path above.
+
+Install or refresh the skill with `npx skills add elfa-ai/skills`.
 
 ## How to use this skill
 
@@ -854,6 +865,8 @@ _Poll-based LLM flow:_
 ```
 POST /v2/auto/queries                               → create query with action.type = "llm"
 GET  /v2/auto/queries/{queryId}                     → poll until execution with sessionId appears
+                                                      (latestEvaluation.conditionStates[] shows
+                                                       progress while you wait)
 GET  /v2/auto/queries/{queryId}/sessions/{sessionId} → fetch full analysis
 ```
 
@@ -1786,31 +1799,96 @@ is a position count. Resolve a real open Kalshi ticker first — don't guess.
 
 #### Poll response shape
 
-`GET /v2/auto/queries/{queryId}` (and the x402 `POST` equivalent) returns:
+> **All query and execution identifiers are UUIDs** (e.g.
+> `a12d20ff-6cb2-433e-afed-cc2e6a0380b6`) — **not** prefixed strings like `q_123` or
+> `exec_123`. The short `q_123` forms used elsewhere in this skill are placeholders for
+> readability only; never construct or pattern-match on a prefixed ID.
+
+`GET /v2/auto/queries/{queryId}` (and the x402 `POST` equivalent) returns `queryId`, `status`,
+an optional `credits`, `latestEvaluation` (current state), and `executions` (what actually
+fired).
+
+**Distinguish the two runtime surfaces — this is the most common polling mistake:**
+
+| Surface | Answers | Read for the value |
+|---|---|---|
+| `latestEvaluation.conditionStates[]` | "what is true **right now**" | `currentValue` vs `targetValue` |
+| Auto Trigger Context on an execution | "what **fired**, and why" | `trigger.matchedConditions[].match.observedValue` |
+
+**`latestEvaluation`** is `null` until the query has evaluated at least once:
 
 ```json
 {
-  "queryId": "q_123",
-  "status": "active",
-  "latestEvaluation": {
-    "evaluatedAt": "2026-04-01T12:00:00.000Z",
-    "wouldTriggerNow": false
-  },
-  "executions": [
+  "evaluatedAt": "2026-04-01T12:00:00.000Z",
+  "conditionStates": [
     {
-      "id": "exec_123",
-      "queryId": "q_123",
-      "type": "llm",
-      "status": "failed",
-      "error": {
-        "code": "LLM_ACTION_UPSTREAM_ERROR",
-        "message": "Failed to execute llm action"
-      },
-      "createdAt": "2026-04-01T12:00:01.000Z"
+      "index": 0,
+      "source": "price",
+      "method": "current",
+      "args": { "symbol": "BTC" },
+      "currentValue": 97250.5,
+      "targetValue": 100000,
+      "operator": "<",
+      "isMet": true,
+      "lastUpdated": "2026-04-01T12:00:00.000Z"
     }
-  ]
+  ],
+  "wouldTriggerNow": true,
+  "matchingConditions": 1,
+  "totalConditions": 1
 }
 ```
+
+`conditionStates[]` entries may also carry `reason`, and for `llm` conditions
+`conversationSessionId`, `runId`, and `cacheHit`. Use `matchingConditions` / `totalConditions`
+to show partial progress ("2 of 3 conditions met") without re-deriving it yourself.
+
+**Auto Trigger Context** appears on execution records once the query has fired. It is the
+**stable public representation of why the query fired** — raw stored trigger payloads are not
+part of the public API, so do not depend on them.
+
+```json
+{
+  "id": "a12d20ff-6cb2-433e-afed-cc2e6a0380b6",
+  "queryId": "76e2e824-fc47-4d60-99b1-c227fbd2d3f5",
+  "type": "notification",
+  "status": "success",
+  "details": { "notification": { "channel": "webhook" } },
+  "triggerTime": "2026-04-01T12:00:00.000Z",
+  "conditionsMet": 1,
+  "trigger": {
+    "type": "price",
+    "time": "2026-04-01T12:00:00.000Z",
+    "matchedConditions": [
+      {
+        "condition": {
+          "source": "price",
+          "method": "current",
+          "args": { "symbol": "BTC" },
+          "operator": "<",
+          "value": 100000
+        },
+        "match": { "observedValue": 97250.5 }
+      }
+    ]
+  },
+  "createdAt": "2026-04-01T12:00:01.000Z"
+}
+```
+
+- `trigger.matchedConditions[].condition.value` is the **threshold**;
+  `.match.observedValue` is the **value seen at trigger time**. Report both when explaining a
+  fire to a user.
+- For Signal sources (`tweet` / `news`), `match` also carries provenance — `url`,
+  `mentionedAt`, `confidence`, `accountHandle`, and for Telegram `chatUsername`, `chatTitle`,
+  `messageId` / `messageIds`, `groupId`. Use `url` to link the user straight to the post that
+  fired the plan.
+- `details` is keyed by action kind (`trade`, `notification`, `llm`, `auto`, `script`).
+- Failed executions carry `error` `{ code, message }`, e.g.
+  `LLM_ACTION_UPSTREAM_ERROR`.
+
+Auto Trigger Context is also included in outbound delivery payloads and script trigger
+context — so a webhook receiver can explain a fire without a follow-up poll.
 
 Use polling for debugging or backfills. For production delivery, prefer webhook or SSE
 notifications. Store `sessionId` values from executions so you can fetch full LLM analysis
@@ -2176,6 +2254,8 @@ Full detail: [Notifications](https://docs.elfa.ai/auto/notifications) |
 | Event received but agent does nothing | Ingress processes inline and times out | ACK fast, push to queue, process in worker |
 | SSE disconnect/reconnect loops | No retry/backoff or unstable consumer | Add reconnect backoff + heartbeat monitoring |
 | Missing triggers after some time | Query expired or was cancelled | Poll status; check `expiresIn`, `status`, `latestEvaluation` |
+| "Why hasn't it fired yet?" | Condition is close but not met | Read `latestEvaluation.conditionStates[]` — compare `currentValue` vs `targetValue`, and `matchingConditions` vs `totalConditions`. Do **not** infer this from executions |
+| "Why did it fire?" | Need the value at trigger time, not the current value | Read the execution's `trigger.matchedConditions[]` — `.match.observedValue` vs `.condition.value`. `latestEvaluation` has since moved on |
 | Signature timestamp rejected | Runner clock skew | Sync clock (NTP); enforce bounded replay window |
 | `Telegram bot cannot send messages in this chat` at create | Bot isn't in the group, or the group revokes `can_send_messages` for it | Add the bot to the chat and grant send permission (or make it an admin), then retry |
 | Telegram create fails for a group | `chatId` missing the leading `-`, or the target is a channel | Group IDs are negative (`-1001234567890`); channels are not supported |
