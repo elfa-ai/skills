@@ -2592,7 +2592,7 @@ Aggregation endpoints (trending-tokens, trending-cas, top-mentions, token-news) 
 | `token-news` | `7d` | `1` | `20` | `coinIds`, `reposts` |
 | `keyword-mentions` | `7d` | — (cursor) | `limit` `20`, **max 30** | `keywords`, `accountName`, `searchType`, `cursor`, `reposts` |
 | `event-summary` | `7d` | — | — | `keywords` **required**, `searchType` (default `or`) |
-| `trending-narratives` | — | — | — | `timeFrame` (`day` \| `week`, default `day`), `maxNarratives` (`7`), `maxTweetsPerNarrative` (`5`) |
+| `trending-narratives` | — | — | — | `timeFrame` (`day` \| `week`, default `day`), `maxNarratives` (default `7`, range `1`–`20`), `maxTweetsPerNarrative` (default `5`, range `1`–`20`) |
 | `smart-stats` | — | — | — | `username` **required** |
 
 Every endpoint above except `trending-narratives` and `smart-stats` also accepts `from`/`to`
