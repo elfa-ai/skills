@@ -6167,13 +6167,14 @@
 					}
 				},
 				"description": "Retrieve trending tokens based on mention activity and momentum.\n\n**Cost:** 1 credit ($0.009). Requires x402 payment.",
-				"summary": "Trending tokens",
+				"summary": "Fetch trending tokens by mention volume",
 				"tags": [
 					"x402 Aggregations"
 				],
 				"security": [],
 				"parameters": [
 					{
+						"description": "Time window for trending analysis (e.g., \"30m\", \"1h\", \"4h\", \"24h\", \"7d\", \"30d\")",
 						"in": "query",
 						"name": "timeWindow",
 						"required": false,
@@ -6183,6 +6184,7 @@
 						}
 					},
 					{
+						"description": "Start date (unix timestamp)",
 						"in": "query",
 						"name": "from",
 						"required": false,
@@ -6192,6 +6194,7 @@
 						}
 					},
 					{
+						"description": "End date (unix timestamp)",
 						"in": "query",
 						"name": "to",
 						"required": false,
@@ -6201,6 +6204,7 @@
 						}
 					},
 					{
+						"description": "Page number for pagination",
 						"in": "query",
 						"name": "page",
 						"required": false,
@@ -6211,6 +6215,7 @@
 						}
 					},
 					{
+						"description": "Number of items per page",
 						"in": "query",
 						"name": "pageSize",
 						"required": false,
@@ -6221,6 +6226,7 @@
 						}
 					},
 					{
+						"description": "Minimum number of mentions required",
 						"in": "query",
 						"name": "minMentions",
 						"required": false,
@@ -6268,13 +6274,14 @@
 					}
 				},
 				"description": "Retrieve smart account statistics for a username.\n\n**Cost:** 1 credit ($0.009). Requires x402 payment.",
-				"summary": "Smart stats of accounts",
+				"summary": "Fetch smart-account stats for an X username",
 				"tags": [
 					"x402 Account"
 				],
 				"security": [],
 				"parameters": [
 					{
+						"description": "Account username to get stats for",
 						"in": "query",
 						"name": "username",
 						"required": true,
@@ -6338,13 +6345,14 @@
 					}
 				},
 				"description": "Returns the most significant mentions for a given ticker symbol.\n\n**Cost:** 1 credit ($0.009). Requires x402 payment.",
-				"summary": "Top mentions",
+				"summary": "Fetch top mentions for a ticker symbol",
 				"tags": [
 					"x402 Data"
 				],
 				"security": [],
 				"parameters": [
 					{
+						"description": "The ticker symbol to get mentions for. Use `$` prefix (e.g., `$SOL` or URL-encoded `%24SOL`) for exact cashtag matching only. Without `$`, results include both cashtag mentions and general token references.",
 						"in": "query",
 						"name": "ticker",
 						"required": true,
@@ -6353,6 +6361,7 @@
 						}
 					},
 					{
+						"description": "Time window for mentions (e.g., \"1h\", \"24h\", \"7d\")",
 						"in": "query",
 						"name": "timeWindow",
 						"required": false,
@@ -6362,6 +6371,7 @@
 						}
 					},
 					{
+						"description": "Start date (unix timestamp)",
 						"in": "query",
 						"name": "from",
 						"required": false,
@@ -6371,6 +6381,7 @@
 						}
 					},
 					{
+						"description": "End date (unix timestamp)",
 						"in": "query",
 						"name": "to",
 						"required": false,
@@ -6380,6 +6391,7 @@
 						}
 					},
 					{
+						"description": "Page number for pagination",
 						"in": "query",
 						"name": "page",
 						"required": false,
@@ -6390,6 +6402,7 @@
 						}
 					},
 					{
+						"description": "Number of items per page",
 						"in": "query",
 						"name": "pageSize",
 						"required": false,
@@ -6400,6 +6413,7 @@
 						}
 					},
 					{
+						"description": "Set to `false` to exclude reposts (default: included)",
 						"in": "query",
 						"name": "reposts",
 						"required": false,
@@ -6461,13 +6475,14 @@
 					}
 				},
 				"description": "Search mentions by keywords or account with cursor pagination.\n\n**Cost:** 1 credit ($0.009). Requires x402 payment.",
-				"summary": "Multi keyword mentions search",
+				"summary": "Search mentions by keyword or account",
 				"tags": [
 					"x402 Data"
 				],
 				"security": [],
 				"parameters": [
 					{
+						"description": "Up to 5 keywords to search for, separated by commas (optional if accountName provided)",
 						"in": "query",
 						"name": "keywords",
 						"required": false,
@@ -6476,6 +6491,7 @@
 						}
 					},
 					{
+						"description": "Account username to filter by (optional if keywords provided)",
 						"in": "query",
 						"name": "accountName",
 						"required": false,
@@ -6484,6 +6500,7 @@
 						}
 					},
 					{
+						"description": "Time window for mentions (e.g., \"1h\", \"24h\", \"7d\")",
 						"in": "query",
 						"name": "timeWindow",
 						"required": false,
@@ -6493,6 +6510,7 @@
 						}
 					},
 					{
+						"description": "Start date (unix timestamp)",
 						"in": "query",
 						"name": "from",
 						"required": false,
@@ -6502,6 +6520,7 @@
 						}
 					},
 					{
+						"description": "End date (unix timestamp)",
 						"in": "query",
 						"name": "to",
 						"required": false,
@@ -6511,6 +6530,7 @@
 						}
 					},
 					{
+						"description": "Number of results to return (max 30)",
 						"in": "query",
 						"name": "limit",
 						"required": false,
@@ -6521,6 +6541,7 @@
 						}
 					},
 					{
+						"description": "Type of search (and, or)",
 						"in": "query",
 						"name": "searchType",
 						"required": false,
@@ -6529,6 +6550,7 @@
 						}
 					},
 					{
+						"description": "Cursor for pagination (millisecond timestamp from a previous response's `metadata.cursor`)",
 						"in": "query",
 						"name": "cursor",
 						"required": false,
@@ -6537,6 +6559,7 @@
 						}
 					},
 					{
+						"description": "Set to `false` to exclude reposts (default: included)",
 						"in": "query",
 						"name": "reposts",
 						"required": false,
@@ -6588,13 +6611,14 @@
 					}
 				},
 				"description": "Get event summary generated from keyword mention windows.\n\n**Cost:** 5 credits ($0.045). Requires x402 payment.",
-				"summary": "Event summary from keyword mentions (5 credits total)",
+				"summary": "Summarize events from keyword mentions",
 				"tags": [
 					"x402 Data"
 				],
 				"security": [],
 				"parameters": [
 					{
+						"description": "Keywords to search for, separated by commas",
 						"in": "query",
 						"name": "keywords",
 						"required": true,
@@ -6603,6 +6627,7 @@
 						}
 					},
 					{
+						"description": "Start date (unix timestamp)",
 						"in": "query",
 						"name": "from",
 						"required": false,
@@ -6612,6 +6637,7 @@
 						}
 					},
 					{
+						"description": "End date (unix timestamp)",
 						"in": "query",
 						"name": "to",
 						"required": false,
@@ -6621,6 +6647,7 @@
 						}
 					},
 					{
+						"description": "Time window for mentions (e.g., \"30m\", \"1h\", \"4h\", \"24h\", \"7d\", \"30d\")",
 						"in": "query",
 						"name": "timeWindow",
 						"required": false,
@@ -6630,6 +6657,7 @@
 						}
 					},
 					{
+						"description": "Type of search (and, or)",
 						"in": "query",
 						"name": "searchType",
 						"required": false,
@@ -6690,13 +6718,14 @@
 					}
 				},
 				"description": "Analyze narrative trends from recent market discussions.\n\n**Cost:** 5 credits ($0.045). Requires x402 payment.",
-				"summary": "Trending narratives (5 credits total)",
+				"summary": "List trending narratives with sample posts",
 				"tags": [
 					"x402 Data"
 				],
 				"security": [],
 				"parameters": [
 					{
+						"description": "Time frame for analysis (day, week)",
 						"in": "query",
 						"name": "timeFrame",
 						"required": false,
@@ -6706,6 +6735,7 @@
 						}
 					},
 					{
+						"description": "Maximum number of narratives to return (1-20)",
 						"in": "query",
 						"name": "maxNarratives",
 						"required": false,
@@ -6716,6 +6746,7 @@
 						}
 					},
 					{
+						"description": "Maximum number of tweets per narrative (1-20)",
 						"in": "query",
 						"name": "maxTweetsPerNarrative",
 						"required": false,
@@ -6781,13 +6812,14 @@
 					}
 				},
 				"description": "Get token-related news mention feed.\n\n**Cost:** 1 credit ($0.009). Requires x402 payment.",
-				"summary": "Token news mentions",
+				"summary": "Fetch the token news mentions feed",
 				"tags": [
 					"x402 Data"
 				],
 				"security": [],
 				"parameters": [
 					{
+						"description": "Time window for mentions (e.g., \"30m\", \"1h\", \"4h\", \"24h\", \"7d\", \"30d\")",
 						"in": "query",
 						"name": "timeWindow",
 						"required": false,
@@ -6797,6 +6829,7 @@
 						}
 					},
 					{
+						"description": "Start date (unix timestamp)",
 						"in": "query",
 						"name": "from",
 						"required": false,
@@ -6806,6 +6839,7 @@
 						}
 					},
 					{
+						"description": "End date (unix timestamp)",
 						"in": "query",
 						"name": "to",
 						"required": false,
@@ -6815,6 +6849,7 @@
 						}
 					},
 					{
+						"description": "Page number for pagination",
 						"in": "query",
 						"name": "page",
 						"required": false,
@@ -6825,6 +6860,7 @@
 						}
 					},
 					{
+						"description": "Number of items per page",
 						"in": "query",
 						"name": "pageSize",
 						"required": false,
@@ -6835,6 +6871,7 @@
 						}
 					},
 					{
+						"description": "CoinGecko Coin IDs to filter by, comma-separated",
 						"in": "query",
 						"name": "coinIds",
 						"required": false,
@@ -6843,6 +6880,7 @@
 						}
 					},
 					{
+						"description": "Set to `false` to exclude reposts (default: included)",
 						"in": "query",
 						"name": "reposts",
 						"required": false,
@@ -6892,13 +6930,14 @@
 					}
 				},
 				"description": "Retrieve trending contract addresses on Twitter.\n\n**Cost:** 1 credit ($0.009). Requires x402 payment.",
-				"summary": "Trending contract addresses on Twitter",
+				"summary": "List trending contract addresses on X",
 				"tags": [
 					"x402 Aggregations"
 				],
 				"security": [],
 				"parameters": [
 					{
+						"description": "Time window for trending analysis (e.g., \"30m\", \"1h\", \"4h\", \"24h\", \"7d\", \"30d\")",
 						"in": "query",
 						"name": "timeWindow",
 						"required": false,
@@ -6908,6 +6947,7 @@
 						}
 					},
 					{
+						"description": "Start date (unix timestamp)",
 						"in": "query",
 						"name": "from",
 						"required": false,
@@ -6917,6 +6957,7 @@
 						}
 					},
 					{
+						"description": "End date (unix timestamp)",
 						"in": "query",
 						"name": "to",
 						"required": false,
@@ -6926,6 +6967,7 @@
 						}
 					},
 					{
+						"description": "Page number for pagination",
 						"in": "query",
 						"name": "page",
 						"required": false,
@@ -6936,6 +6978,7 @@
 						}
 					},
 					{
+						"description": "Number of items per page",
 						"in": "query",
 						"name": "pageSize",
 						"required": false,
@@ -6946,6 +6989,7 @@
 						}
 					},
 					{
+						"description": "Minimum number of mentions required",
 						"in": "query",
 						"name": "minMentions",
 						"required": false,
@@ -6997,13 +7041,14 @@
 					}
 				},
 				"description": "Retrieve trending contract addresses on Telegram.\n\n**Cost:** 1 credit ($0.009). Requires x402 payment.",
-				"summary": "Trending contract addresses on Telegram",
+				"summary": "List trending contract addresses on Telegram",
 				"tags": [
 					"x402 Aggregations"
 				],
 				"security": [],
 				"parameters": [
 					{
+						"description": "Time window for trending analysis (e.g., \"30m\", \"1h\", \"4h\", \"24h\", \"7d\", \"30d\")",
 						"in": "query",
 						"name": "timeWindow",
 						"required": false,
@@ -7013,6 +7058,7 @@
 						}
 					},
 					{
+						"description": "Start date (unix timestamp)",
 						"in": "query",
 						"name": "from",
 						"required": false,
@@ -7022,6 +7068,7 @@
 						}
 					},
 					{
+						"description": "End date (unix timestamp)",
 						"in": "query",
 						"name": "to",
 						"required": false,
@@ -7031,6 +7078,7 @@
 						}
 					},
 					{
+						"description": "Page number for pagination",
 						"in": "query",
 						"name": "page",
 						"required": false,
@@ -7041,6 +7089,7 @@
 						}
 					},
 					{
+						"description": "Number of items per page",
 						"in": "query",
 						"name": "pageSize",
 						"required": false,
@@ -7051,6 +7100,7 @@
 						}
 					},
 					{
+						"description": "Minimum number of mentions required",
 						"in": "query",
 						"name": "minMentions",
 						"required": false,
@@ -7098,18 +7148,20 @@
 					}
 				},
 				"description": "Send a message to Elfa AI and receive a complete response.\n\n`message` is required for `analysisType: \"chat\"` and ignored for other\nanalysis types. `adaptive` speed is not available on x402.\n\n**Cost:** speed based (`fast` 5 credits/$0.045, `expert` 18 credits/$0.162).\nRequires x402 payment.",
-				"summary": "AI chat",
+				"summary": "Generate an AI answer about crypto markets",
 				"tags": [
 					"x402 Chat"
 				],
 				"security": [],
 				"parameters": [],
 				"requestBody": {
+					"description": "Chat request: `message`, `analysisType`, and `speed`",
 					"required": true,
 					"content": {
 						"application/json": {
 							"schema": {
-								"$ref": "#/components/schemas/X402ChatRequestBody"
+								"$ref": "#/components/schemas/X402ChatRequestBody",
+								"description": "Chat request: `message`, `analysisType`, and `speed`"
 							},
 							"examples": {
 								"default": {
@@ -7167,18 +7219,20 @@
 					}
 				},
 				"description": "Ask the AI to help you build an EQL query. It can research live market data, suggest strategies, and return ready-to-use EQL JSON.\n\nThe response message contains the AI's reply in Markdown. When it generates EQL,\nit will be in a JSON code block that you can extract, validate, and submit.\n\nUse `sessionId` in follow-up requests to maintain conversation context.\n\n**Cost:** speed based (`fast` 5 credits/$0.045, `expert` 18 credits/$0.162).\nRequires x402 payment.",
-				"summary": "Auto Builder chat",
+				"summary": "Generate an Auto plan from a prompt",
 				"tags": [
 					"x402 Auto"
 				],
 				"security": [],
 				"parameters": [],
 				"requestBody": {
+					"description": "Chat request: `query_package`, `speed`, and optional `sessionId`",
 					"required": true,
 					"content": {
 						"application/json": {
 							"schema": {
-								"$ref": "#/components/schemas/AutoChatRequestBody"
+								"$ref": "#/components/schemas/AutoChatRequestBody",
+								"description": "Chat request: `query_package`, `speed`, and optional `sessionId`"
 							},
 							"examples": {
 								"default": {
@@ -7234,13 +7288,14 @@
 					}
 				},
 				"description": "Validate EQL syntax and get a cost estimate without creating a query.\nReturns a simulation-based cost estimate when the query is valid.\nRequires `x-elfa-agent-secret` header.\n\n**Cost:** Free",
-				"summary": "Validate EQL query",
+				"summary": "Validate an EQL query without creating it",
 				"tags": [
 					"x402 Auto"
 				],
 				"security": [],
 				"parameters": [
 					{
+						"description": "Any string you choose. Identity is `SHA256(secret)`, so reuse the same value across calls to reach your own queries.",
 						"in": "header",
 						"name": "x-elfa-agent-secret",
 						"required": true,
@@ -7250,11 +7305,13 @@
 					}
 				],
 				"requestBody": {
+					"description": "Request body carrying the EQL `query` to validate",
 					"required": true,
 					"content": {
 						"application/json": {
 							"schema": {
-								"$ref": "#/components/schemas/ValidateQueryRequestBody"
+								"$ref": "#/components/schemas/ValidateQueryRequestBody",
+								"description": "Request body carrying the EQL `query` to validate"
 							},
 							"examples": {
 								"default": {
@@ -7362,6 +7419,7 @@
 				"security": [],
 				"parameters": [
 					{
+						"description": "Any string you choose. Identity is `SHA256(secret)`, so reuse the same value across calls to reach your own queries.",
 						"in": "header",
 						"name": "x-elfa-agent-secret",
 						"required": true,
@@ -7371,11 +7429,13 @@
 					}
 				],
 				"requestBody": {
+					"description": "Request body carrying the EQL `query` and an optional `title`",
 					"required": true,
 					"content": {
 						"application/json": {
 							"schema": {
-								"$ref": "#/components/schemas/CreateQueryRequestBody"
+								"$ref": "#/components/schemas/CreateQueryRequestBody",
+								"description": "Request body carrying the EQL `query` and an optional `title`"
 							},
 							"examples": {
 								"default": {
@@ -7484,7 +7544,7 @@
 					}
 				},
 				"description": "Check query status and execution results.\nRequires `x-elfa-agent-secret` header.\n\n`latestEvaluation` is the latest current-state snapshot, including\n`conditionStates[]`. Execution records include Auto Trigger Context\n(`triggerTime`, `conditionsMet`, `trigger`) when the query has fired.\n\n**Cost:** Free",
-				"summary": "Poll query status",
+				"summary": "Poll query status and execution results",
 				"tags": [
 					"x402 Auto"
 				],
@@ -7500,6 +7560,7 @@
 						}
 					},
 					{
+						"description": "Any string you choose. Identity is `SHA256(secret)`, so reuse the same value across calls to reach your own queries.",
 						"in": "header",
 						"name": "x-elfa-agent-secret",
 						"required": true,
@@ -7566,7 +7627,7 @@
 					}
 				},
 				"description": "Cancel an active query.\nRequires `x-elfa-agent-secret` header.\n\n**Cost:** Free",
-				"summary": "Cancel query",
+				"summary": "Cancel an active conditional query",
 				"tags": [
 					"x402 Auto"
 				],
@@ -7582,6 +7643,7 @@
 						}
 					},
 					{
+						"description": "Any string you choose. Identity is `SHA256(secret)`, so reuse the same value across calls to reach your own queries.",
 						"in": "header",
 						"name": "x-elfa-agent-secret",
 						"required": true,
@@ -7633,7 +7695,7 @@
 					}
 				},
 				"description": "List LLM output sessions for a query.\nOnly relevant for queries with `actions[0].type: \"llm\"`.\nRequires `x-elfa-agent-secret` header.\n\n**Cost:** Free",
-				"summary": "List LLM sessions",
+				"summary": "List LLM analysis sessions for a query",
 				"tags": [
 					"x402 Auto"
 				],
@@ -7649,6 +7711,7 @@
 						}
 					},
 					{
+						"description": "Any string you choose. Identity is `SHA256(secret)`, so reuse the same value across calls to reach your own queries.",
 						"in": "header",
 						"name": "x-elfa-agent-secret",
 						"required": true,
@@ -7719,7 +7782,7 @@
 					}
 				},
 				"description": "Get full LLM analysis output for a specific session, including conversation messages and any trade signals.\nRequires `x-elfa-agent-secret` header.\n\n**Cost:** Free",
-				"summary": "Get LLM session details",
+				"summary": "Get full LLM output for one session",
 				"tags": [
 					"x402 Auto"
 				],
@@ -7744,6 +7807,7 @@
 						}
 					},
 					{
+						"description": "Any string you choose. Identity is `SHA256(secret)`, so reuse the same value across calls to reach your own queries.",
 						"in": "header",
 						"name": "x-elfa-agent-secret",
 						"required": true,
@@ -7796,7 +7860,7 @@
 					}
 				},
 				"description": "Stream query notifications via Server-Sent Events (SSE).\nRequires `x-elfa-agent-secret` header.\n\n**Cost:** Free",
-				"summary": "Stream query notifications",
+				"summary": "Monitor query notifications over SSE",
 				"tags": [
 					"x402 Auto"
 				],
@@ -7812,6 +7876,7 @@
 						}
 					},
 					{
+						"description": "Any string you choose. Identity is `SHA256(secret)`, so reuse the same value across calls to reach your own queries.",
 						"in": "header",
 						"name": "x-elfa-agent-secret",
 						"required": true,
