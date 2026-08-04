@@ -502,11 +502,11 @@ returned `sessionId` back to continue it.
 | Event | Payload |
 |---|---|
 | `session_info` | `sessionId`, `analysisType` |
-| `title` | generated session/analysis title |
-| `text` | incremental Markdown chunk |
+| `title` | `title` — generated session/analysis title |
+| `text` | `content` — incremental Markdown chunk |
 | `text_complete` | incremental text finished |
 | `status` | progress update (e.g. "Searching mentions…") |
-| `credits` | `creditsConsumed` |
+| `credits` | `credits` — credits consumed so far |
 | `complete` | final `sessionId`, `success`, `creditsConsumed` |
 | `invalid_request` | query rejected by safety checks |
 | `error` | stream failure |
