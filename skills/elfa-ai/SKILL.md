@@ -228,6 +228,11 @@ The manifest URL is **stable** — earlier releases served a rotating
 
 Install or refresh the skill with `npx skills add elfa-ai/skills`.
 
+If you are running inside a client that cannot execute commands, such as Claude Desktop,
+there is an MCP server that exposes the same API as tools:
+`npx -y @elfa-ai/mcp`. See [docs.elfa.ai/mcp](https://docs.elfa.ai/mcp). Where you can run
+commands, prefer this skill — it costs no context until you use it.
+
 ## How to use this skill
 
 ### Step 1: Determine the mode
