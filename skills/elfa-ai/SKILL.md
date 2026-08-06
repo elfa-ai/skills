@@ -92,7 +92,7 @@ Elfa supports two independent ways to authenticate requests:
 Both modes access the same data. The only difference is how you authenticate:
 - **API key** — register at https://go.elfa.ai/claude-skills, get 1,000 free credits.
 - **x402** — pay per request with USDC on Base, Arbitrum, Polygon, Avalanche, or Solana. No
-  registration, no API key. Currently in beta with a 70% discount on Auto endpoints.
+  registration, no API key. Currently in beta.
 
 ### Endpoints at a glance
 
@@ -280,24 +280,26 @@ Use the `bash_tool` to call the Elfa API via curl.
 
 **Plans, credits, and rate limits:**
 
-| | Free | Chill | Grow | Enterprise |
-|---|---|---|---|---|
-| Monthly | $0 | $40 | $290 | Custom |
-| Annual (15% off) | — | $408 | $2,958 | Custom |
-| Credits / month | 1,000 | 5,000 | 40,000 | Custom |
-| Rate limit | 60 RPM | 60 RPM | 120 RPM | Custom |
+| | Free | Grow | Enterprise |
+|---|---|---|---|
+| Monthly | $0 | $290 | Custom |
+| Annual (15% off) | $0 | $2,958 | Custom |
+| Credits / month | 1,000 | 40,000 | Custom |
+| Rate limit | 60 RPM | 120 RPM | Custom |
+| Agent Chat | — | ✓ | ✓ |
+| Agent Automation | — | ✓ | ✓ |
 
-Pay-per-use: **PAYG** is $0.009/credit at 60 RPM with an API key; **x402** is $0.009/credit at
-1,000 RPM with no account. Same per-credit price — pick on integration style.
+Pay-per-use: **PAYG** is $0.009/credit at 60 RPM with an API key, drawn down from a prepaid
+credit balance ($10 minimum top-up, card or USDC); **x402** is $0.009/credit at 1,000 RPM with
+no account. Same per-credit price — pick on integration style.
 
 **What each tier unlocks:**
 - **Free** — core social data: trending tokens, smart stats, top mentions, keyword mentions,
   event summaries, token news, trending contract addresses (Twitter + Telegram)
-- **Chill** — everything in Free, more credits (no new endpoints)
-- **Grow** — everything in Chill, plus token mindshare, sentiment-weighted mentions,
-  **trending narratives**, and **AI Chat** (`POST /v2/chat`)
-- **Enterprise** — everything in Grow, plus **streaming AI Chat** (`POST /v2/chat/stream`),
-  dedicated support, white-label, custom data retention
+- **Grow** — everything in Free, plus token mindshare, sentiment-weighted mentions,
+  **trending narratives**, and **Elfa Intelligence** (Agent Chat and Agent Automation)
+- **Enterprise** — everything in Grow, plus custom credit and rate limits, **streaming AI Chat**
+  (Ask Elfa, `POST /v2/chat/stream`), dedicated support, custom integrations, and priority support
 
 Gate summary for the tier-restricted endpoints:
 
@@ -343,12 +345,19 @@ Solana — no API key, no registration. This is ideal for agents, bots, and prog
 **x402 details:**
 - **Networks:** the server offers every supported network in the 402 response; your client
   signs on the first one it's registered for. Register the network(s) you hold USDC on.
-- **Scheme:** `exact` (fixed price per request); asset is native Circle USDC (6 decimals).
+- **Scheme:** `exact` (fixed price per request), plus `upto` (metered) on the chat endpoints;
+  asset is native Circle USDC (6 decimals). `upto` needs a one-time Permit2 approval from the
+  wallet — until that approval exists the server answers `412` instead of `402`, so approve and
+  retry. It is available on the EVM networks below; Solana is `exact` only.
+- **Errors:** responses return `{ code, message, errorId, requestId }` — branch on `code`.
+  `requestId` is also the `x-request-id` response header. Two exceptions on the Auto endpoints:
+  EQL validation failures return `422` with `{ valid, errors, warnings }`, and errors raised by
+  the execution engine are passed through unchanged.
 - **Status:** Currently in beta.
 
 | Network | Chain ID | USDC Address | Facilitator |
 |---|---|---|---|
-| Base | `eip155:8453` | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` | [xpay.sh](https://xpay.sh), [payai.network](https://facilitator.payai.network) |
+| Base | `eip155:8453` | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` | [payai.network](https://facilitator.payai.network) |
 | Arbitrum | `eip155:42161` | `0xaf88d065e77c8cC2239327C5EDb3A432268e5831` | [payai.network](https://facilitator.payai.network) |
 | Polygon | `eip155:137` | `0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359` | [payai.network](https://facilitator.payai.network) |
 | Avalanche | `eip155:43114` | `0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E` | [payai.network](https://facilitator.payai.network) |
@@ -362,8 +371,14 @@ EVM signing costs no gas. On Solana the facilitator pays the transaction fee.
 |---|---|---|---|
 | Standard | 1 | $0.009 | trending-tokens, smart-stats, keyword-mentions, token-news, top-mentions, trending-cas |
 | Extended | 5 | $0.045 | event-summary, trending-narratives |
-| Chat — fast | 5 | $0.045 | chat (speed: "fast") |
-| Chat — expert | 18 | $0.162 | chat (speed: "expert", default) |
+
+Data endpoints are `exact` only. `/x402/v2/chat` is speed-based and offers both schemes — pay a
+flat price with `exact`, or authorize a ceiling with `upto` and settle only what the turn used:
+
+| Speed | `exact` (flat) | `upto` (charged up to) |
+|---|---|---|
+| `fast` | $1 | $2 |
+| `expert` (default) | $2 | $6 |
 
 **Making an x402 call with curl (manual flow):**
 
@@ -417,7 +432,7 @@ const response = await x402Fetch(
     body: JSON.stringify({
       message: "What is the current sentiment on BTC?",
       analysisType: "chat",
-      speed: "fast", // "fast" = 5 credits ($0.045), "expert" = 18 credits ($0.162)
+      speed: "fast", // exact: "fast" $1, "expert" $2 — upto: $2 / $6
     }),
   });
 const data = await response.json();
@@ -499,8 +514,8 @@ Both surfaces take the **same request body**. `analysisType` decides the mode:
 `assetMetadata` and ignore free-form `message`. Omit `sessionId` to start a thread; pass the
 returned `sessionId` back to continue it.
 
-**Speed:** `fast` (5 credits, shallower), `expert` (18 credits, **default**), and `adaptive`
-(Elfa chooses) — `adaptive` is available on `/v2/chat` but **not** on `/x402/v2/chat`.
+**Speed:** `fast` (shallower), `expert` (**default**), and `adaptive` (Elfa chooses) —
+`adaptive` is available on `/v2/chat` but **not** on `/x402/v2/chat`.
 
 **SSE event types on `/v2/chat/stream`** (each arrives as a `data:` payload with a `type`):
 
@@ -798,12 +813,18 @@ existing queries/sessions may become inaccessible.
 
 > Reference USD values for Create: baseline `$0.045`, fast call `+$0.045`, expert call `+$0.162`. Use `/queries/validate` to preview exact cost before committing.
 
-**x402 mode (`/x402/v2/auto/*`) — 70% discount, limited-time, pay-per-request in USDC on Base, Arbitrum, Polygon, or Avalanche:**
+**x402 mode (`/x402/v2/auto/*`) — pay-per-request in USDC on Base, Arbitrum, Polygon, Avalanche, or Solana:**
+
+Builder Chat is speed-based with two schemes — a flat `exact` price, or an `upto` ceiling that
+settles only what the turn actually used:
+
+| Speed | `exact` (flat) | `upto` (charged up to) |
+|---|---|---|
+| `fast` | $1 | $2 |
+| `expert` (default) | $2 | $6 |
 
 | Operation | Credits | USDC Cost |
 |---|---|---|
-| Builder Chat — fast | 5 | $0.045 |
-| Builder Chat — expert | 18 | $0.162 |
 | Query creation — baseline | 5 | $0.045 |
 | Per fast LLM call | +5 | +$0.045 |
 | Per expert LLM call | +18 | +$0.162 |
@@ -1067,7 +1088,7 @@ sibling — by default a plan is one-shot; see **Repeat** below):
 copy-trading), never on short-timeframe TA/scalps.
 
 **Plan limits (active plans per account):** an account can only hold so many **active** plans
-at once, by API key tier — Free `2`, Chill `10`, Grow `50`, PAYG/Enterprise unlimited. A hard
+at once, by API key tier — Free `2`, Grow `50`, PAYG/Enterprise unlimited. A hard
 ceiling of **100 active plans** applies regardless of tier; exceeding either cap returns
 `409`. Only *active* plans count — expired/cancelled/terminal plans free capacity, so
 cancelling stale plans (or choosing a shorter `expiresIn`) is the fastest way to make room.
@@ -2630,7 +2651,7 @@ Use `$` when you want only cashtag-specific mentions. Omit `$` for a more inclus
 - Most endpoints: 1 credit per call ($0.009 via x402)
 - Event summary: 5 credits ($0.045 via x402)
 - Trending narratives: 5 credits ($0.045 via x402)
-- Chat: fast = 5 credits ($0.045), expert = 18 credits ($0.162) via x402
+- Chat: speed-based; via x402 pay `exact` (fast $1, expert $2) or `upto` (fast $2, expert $6)
 - `/v2/ping`, `/v2/key-status`: free
 
 **Auto query lifecycle:**
@@ -2656,7 +2677,7 @@ Use `$` when you want only cashtag-specific mentions. Omit `$` for a more inclus
   docs. Route order execution through Auto trade actions.
 - When the user asks about pricing or API key tiers, direct them to
   https://go.elfa.ai/claude-skills for full details on plans and pricing.
-- API-key request rate limits are per tier: Free / Chill / PAYG = **60 requests/min**,
+- API-key request rate limits are per tier: Free / PAYG = **60 requests/min**,
   Grow = **120 requests/min** (Enterprise custom). These are independent of credit balances.
   A `429` response should be retried honoring `Retry-After`.
 - x402 is currently in beta. Rate limits: 1,000 requests per 60s window (per client IP).
