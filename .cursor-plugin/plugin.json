@@ -1,6 +1,6 @@
 {
   "name": "elfa-ai",
-  "displayName": "Elfa AI",
+  "displayName": "Elfa AI Skill",
   "version": "1.0.0",
   "minClientVersions": {
     "cursor": "3.13.0"
