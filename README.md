@@ -220,10 +220,9 @@ Set up the Elfa GRVT bot and create a SOL RSI dip-buy strategy with TP and SL
 | `/v2/auto/queries/:queryId/sessions` | List/get LLM analysis sessions |
 | `/v2/auto/queries/drafts` | Upsert, list, validate, convert, delete query drafts |
 | `/v2/auto/executions` | List and get trigger execution records |
-| `/v2/auto/exchanges` | Connect, list, disconnect exchange integrations |
-| `/v2/auto/validate-symbol/:exchange/:symbol` | Check whether a symbol is supported on a venue (`hyperliquid` / `gmx`) — pre-flight for trade actions and for `price`/`ta` data sources |
+| `/v2/auto/validate-symbol/:exchange/:symbol` | Check whether a symbol is supported on a venue — pre-flight for `price`/`ta` data sources |
 
-Auto endpoints require HMAC signing for trade-action mutations (`market_order`, `limit_order`, or `llm` callback to either) and exchange linking in API key mode; notification-only mutations (`notify`, `telegram_bot`, `webhook`, or `llm` callback to those) skip HMAC. x402 mode uses `x-elfa-agent-secret` instead of HMAC. Always-signing remains safe in API key mode — signed requests are accepted on every route. See [Auto docs](https://docs.elfa.ai/auto/overview).
+Auto mutations are HMAC-signed in API key mode unless the action is a supported notification (`notify`, `telegram_bot`, `webhook`, or `llm` callback to those), which skips HMAC. x402 mode uses `x-elfa-agent-secret` instead of HMAC. Always-signing remains safe in API key mode — signed requests are accepted on every route. See [Auto docs](https://docs.elfa.ai/auto/overview).
 
 Full details at [docs.elfa.ai](https://docs.elfa.ai).
 

@@ -6,9 +6,9 @@
 #   x402:     Pass --x402 with a pre-signed payment header via --payment.
 #
 # Supports Auto endpoints with HMAC signing (conditional per route):
-#   --hmac-secret  HMAC secret. Required for exchange linking; optional for
-#                  query lifecycle routes (signed if provided, allowed without
-#                  for notification-only EQL actions).
+#   --hmac-secret  HMAC secret. Optional for query lifecycle routes (signed if
+#                  provided, allowed without for notification-only EQL actions);
+#                  required for any other Auto mutation.
 #   --agent-secret Agent identity secret for x402 Auto requests.
 #
 # Usage:
@@ -62,8 +62,7 @@ Auto endpoint HMAC signing:
            /v2/auto/queries/q_123  →  mounted_path = /queries/q_123
 
   HMAC always required (script will refuse to call without --hmac-secret):
-    POST   /v2/auto/exchanges                            (connect — trade gateway)
-    DELETE /v2/auto/exchanges/{exchange}                 (disconnect — trade gateway)
+    any other /v2/auto mutation                          (fail-safe)
 
   HMAC conditional (signed if --hmac-secret is provided; allowed without for
   notification-only EQL actions like notify / telegram_bot / webhook):
@@ -84,10 +83,9 @@ Auto endpoint HMAC signing:
     POST   /v2/auto/queries/drafts/{draftId}/validate    (validate stored draft)
     DELETE /v2/auto/queries/drafts/{draftId}             (discard draft)
 
-  Note: For "conditional" routes, the API server enforces HMAC only when the
-  EQL action is trade-flavoured (market_order, limit_order, or llm callback to
-  those). Notification-only actions (notify, telegram_bot, webhook, llm
-  callback to those) are accepted unsigned. If you receive a 401 for a route
+  Note: For "conditional" routes, the API server bypasses HMAC for supported
+  notification actions (notify, telegram_bot, webhook, llm callback to those)
+  and enforces it for any other action shape. If you receive a 401 for a route
   that should accept notification actions, double-check your action payload.
   Always-signing remains safe — signed requests are accepted on every route.
 
@@ -112,9 +110,6 @@ Examples:
   # Auto: create a query with notification action (HMAC OPTIONAL — runs without secret)
   ./elfa_call.sh /v2/auto/queries -d '{"query":{"actions":[{"type":"notify",...}],...}}'
 
-  # Auto: create a query with trade action (HMAC required — server returns 401 without it)
-  ./elfa_call.sh /v2/auto/queries -d '{"query":{"actions":[{"type":"market_order",...}],...}}' --hmac-secret "$ELFA_HMAC_SECRET"
-
   # Auto: cancel an active query (HMAC OPTIONAL — depends on stored query's action type)
   ./elfa_call.sh /v2/auto/queries/q_123/cancel -X POST
 
@@ -129,9 +124,6 @@ Examples:
 
   # Auto: list executions
   ./elfa_call.sh /v2/auto/executions
-
-  # Auto: connect an exchange (HMAC ALWAYS required — trade gateway)
-  ./elfa_call.sh /v2/auto/exchanges -d '{"exchange":"hyperliquid",...}' --hmac-secret "$ELFA_HMAC_SECRET"
 
   # Auto x402: create query with agent secret
   ./elfa_call.sh /v2/auto/queries --x402 --payment '<payload>' --agent-secret "$ELFA_AGENT_SECRET"
@@ -200,13 +192,11 @@ fi
 #   conditional  — sign IF an HMAC secret is available; allow request through
 #                  without HMAC otherwise. Per the docs, the server bypasses HMAC
 #                  for notification-only EQL actions (notify / telegram_bot /
-#                  webhook / llm-callback-to-those) and enforces HMAC for trade
-#                  actions (market_order / limit_order / llm-callback-to-those).
-#                  Always-signing remains safe — signed requests are accepted
-#                  on every route.
+#                  webhook / llm-callback-to-those) and enforces HMAC for any
+#                  other action shape. Always-signing remains safe — signed
+#                  requests are accepted on every route.
 #   required     — must have an HMAC secret; refuse to call without one. Used
-#                  for exchange linking (POST/DELETE /exchanges), which always
-#                  needs HMAC.
+#                  for unrecognized Auto mutation routes, fail-safe.
 #
 # We check the *original* endpoint (before x402 rewrite) by examining whether
 # the path contains /auto/ and the method is POST or DELETE.
@@ -231,8 +221,6 @@ if [[ "$ORIGINAL_ENDPOINT" == /v2/auto/* ]]; then
       /queries/*/cancel)            HMAC_BEHAVIOR="conditional" ;;  # POST cancel depends on stored query action
       /queries/*)                   HMAC_BEHAVIOR="conditional" ;;  # DELETE /queries/:id (delete terminal query — only on triggered/expired/cancelled/failed)
       /queries)                     HMAC_BEHAVIOR="conditional" ;;  # POST create depends on body action
-      /exchanges)                   HMAC_BEHAVIOR="required" ;;  # POST connect: trade gateway
-      /exchanges/*)                 HMAC_BEHAVIOR="required" ;;  # DELETE disconnect: trade gateway
       *)                            HMAC_BEHAVIOR="required" ;;  # unknown route — fail-safe
     esac
   fi
@@ -267,14 +255,14 @@ SHOULD_SIGN=false
 case "$HMAC_BEHAVIOR" in
   required)
     if [[ -z "$HMAC_SECRET" ]]; then
-      die "${METHOD} ${ORIGINAL_ENDPOINT} always requires HMAC (exchange linking). Set ELFA_HMAC_SECRET in your environment or pass --hmac-secret <secret>."
+      die "${METHOD} ${ORIGINAL_ENDPOINT} always requires HMAC. Set ELFA_HMAC_SECRET in your environment or pass --hmac-secret <secret>."
     fi
     SHOULD_SIGN=true
     ;;
   conditional)
     # Sign if a secret is available (always-safe). Skip otherwise — the server
     # accepts unsigned requests for notification-only EQL actions and will
-    # return 401 for trade-action requests. If you hit a 401 here, set
+    # return 401 for any other action shape. If you hit a 401 here, set
     # ELFA_HMAC_SECRET (or pass --hmac-secret) and retry.
     [[ -n "$HMAC_SECRET" ]] && SHOULD_SIGN=true
     ;;
