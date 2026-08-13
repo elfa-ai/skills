@@ -2404,7 +2404,7 @@ committing, or batch authoring flows.
 1. `POST /v2/auto/queries/drafts` — create or update a draft (idempotent upsert).
 2. `GET /v2/auto/queries/drafts` — list editable drafts.
 3. `POST /v2/auto/queries/drafts/:draftId/validate` — validate stored draft.
-4. `POST /v2/auto/queries/drafts/:draftId/convert` — promote draft → active query (**HMAC conditional**: required only when the stored draft uses a trade action type).
+4. `POST /v2/auto/queries/drafts/:draftId/convert` — promote draft → active query (**HMAC conditional**: bypassed when the stored draft uses a notification action, enforced otherwise).
 5. `DELETE /v2/auto/queries/drafts/:draftId` — discard draft.
 
 > `GET /v2/auto/queries/drafts/:draftId` still works but is legacy — prefer
@@ -2513,7 +2513,7 @@ See the [Elfa API documentation](https://docs.elfa.ai) for the full parameter sp
 
 **Auto code generation guidance:**
 - Always include the validate → create flow (never create without validating first)
-- For API key mode: include HMAC signing helper for trade-action and exchange-linking calls (notification-only mutations can be made with just `x-elfa-api-key`)
+- For API key mode: include an HMAC signing helper for mutations that require signing (notification-only mutations can be made with just `x-elfa-api-key`)
 - For x402 mode: include `x-elfa-agent-secret` header on all query lifecycle calls
 - Include Builder Chat examples when the user wants natural-language query building
 - Show how to poll or stream for results after query creation
