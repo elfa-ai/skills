@@ -197,7 +197,7 @@ Set up the Elfa GRVT bot and create a SOL RSI dip-buy strategy with TP and SL
 | `/v2/data/event-summary` | AI event summaries (5 credits) |
 | `/v2/data/trending-narratives` | Trending narrative clusters (5 credits) |
 | `/v2/data/token-news` | Token-related news |
-| `/v2/data/market-events` | Impact-scored market events (**beta** — access-gated) |
+| `/v2/data/market-events` | Impact-scored market events (Enterprise only — access-gated) |
 | `/v2/aggregations/trending-cas/twitter` | Trending contract addresses (Twitter) |
 | `/v2/aggregations/trending-cas/telegram` | Trending contract addresses (Telegram) |
 | `/v2/chat` | AI chat — market analysis, token intros, account reviews |

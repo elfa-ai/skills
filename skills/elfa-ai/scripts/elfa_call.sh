@@ -234,7 +234,7 @@ URL="${BASE_URL}${ENDPOINT}"
 CURL_ARGS=(-s --fail-with-body --max-time 30 -X "$METHOD")
 
 if [[ "$X402" == true ]]; then
-  CURL_ARGS+=(-H "X-PAYMENT: ${PAYMENT}")
+  CURL_ARGS+=(-H "PAYMENT-SIGNATURE: ${PAYMENT}")
   # Add agent-secret header only for x402 Auto requests when provided
   if [[ -n "$AGENT_SECRET" ]] && [[ "$IS_AUTO_ENDPOINT" == true ]]; then
     CURL_ARGS+=(-H "x-elfa-agent-secret: ${AGENT_SECRET}")
