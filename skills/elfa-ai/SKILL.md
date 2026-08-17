@@ -62,7 +62,7 @@ x402 wallet signing is handled client-side by `@x402/fetch` or `@x402/axios`.
 - User wants **smart stats** (smart followers, engagement) for a Twitter/X account
 - User wants an **AI-generated market summary, macro overview, or token analysis** — including
   **streaming** chat output
-- User wants **structured market events** with impact scores (beta)
+- User wants **structured market events** with impact scores
 - User asks how to **integrate, call, or use the Elfa API**
 - User wants **code examples** (curl, Python, JavaScript/TypeScript) for Elfa endpoints
 - User mentions "elfa" in a crypto or trading data context
@@ -110,7 +110,7 @@ except `key-status` which is API key mode only.
 | `/v2/data/event-summary` | GET | AI event summaries from keyword mentions | 5 |
 | `/v2/data/trending-narratives` | GET | Trending narrative clusters (Grow+ / PAYG) | 5 |
 | `/v2/data/token-news` | GET | Token-related news mentions | 1 |
-| `/v2/data/market-events` | GET | **Beta** — impact-scored market events (access-gated) | Beta |
+| `/v2/data/market-events` | GET | Impact-scored market events (Enterprise only) | Enterprise |
 | `/v2/aggregations/trending-cas/twitter` | GET | Trending contract addresses (Twitter) | 1 |
 | `/v2/aggregations/trending-cas/telegram` | GET | Trending contract addresses (Telegram) | 1 |
 | `/v2/chat` | POST | AI chat, complete JSON response (Grow+ / PAYG) | Speed-based |
@@ -301,7 +301,7 @@ Gate summary for the tier-restricted endpoints:
 | `/v2/data/trending-narratives` | Grow+ or PAYG |
 | `/v2/chat` | Grow+ or PAYG |
 | `/v2/chat/stream` | **PAYG or Enterprise only** |
-| `/v2/data/market-events` | Beta access — email sales@elfa.ai |
+| `/v2/data/market-events` | Enterprise only — email sales@elfa.ai |
 
 Exceeding monthly credits rejects further requests until the next month; exceeding the rate
 limit returns `429` (honor `Retry-After`). If a user hits an authorization error on a gated
@@ -534,14 +534,13 @@ curl -sN -X POST "https://api.elfa.ai/v2/chat/stream" \
   -d '{"analysisType":"chat","message":"Why is BTC moving today?","speed":"expert"}'
 ```
 
-#### Market Events (beta)
+#### Market Events
 
 `GET /v2/data/market-events` returns impact-scored, deduplicated market events with supporting
 source documents — useful when you want structured events rather than raw mentions.
 
-> **Beta and access-gated.** Not enabled by default: a key without beta access gets `403`.
-> Email sales@elfa.ai to request it. The path and response contract may change — verify
-> against [docs.elfa.ai](https://docs.elfa.ai) before building on it. API-key mode only.
+> **Enterprise only.** Not enabled by default: a key without access gets `403`.
+> Email sales@elfa.ai to request it. API-key mode only.
 
 | Param | Type | Notes |
 |---|---|---|
@@ -766,7 +765,8 @@ provisioning required. Anything with an unknown or non-notification action shape
 #### x402 Auto (keyless agent mode)
 
 For x402 Auto, no API key or HMAC is needed. Instead:
-- Send x402 payment headers (`PAYMENT-SIGNATURE` preferred, `X-PAYMENT` legacy)
+- Send the x402 payment header `PAYMENT-SIGNATURE`. x402 **v2 only** — `X-PAYMENT` is accepted
+  as an alias for the header name, but the payload must be a v2 payment payload
 - Include `x-elfa-agent-secret` on all query lifecycle routes
 
 **Agent secret management:**
@@ -907,9 +907,13 @@ Response (API-key mode):
   "response": "I can help with that... (markdown + EQL JSON code block)",
   "title": "BTC Breakout Alert",
   "reasoning": null,
-  "planIds": []
+  "planIds": [],
+  "credits": 100
 }
 ```
+
+`credits` carries what the turn cost — the same total as the `x-elfa-credits` header. Builder
+Chat is dynamically priced, so read it instead of assuming a flat per-call cost.
 
 The response message contains the AI's reply in Markdown. When it generates EQL, it will be
 in a JSON code block — extract, validate via `/queries/validate`, then submit via `/queries`.
@@ -1072,7 +1076,7 @@ copy-trading), never on short-timeframe TA/scalps.
 
 **Plan limits (active plans per account):** an account can only hold so many **active** plans
 at once, by API key tier — Free `2`, Grow `50`, PAYG/Enterprise unlimited. A hard
-ceiling of **100 active plans** applies regardless of tier; exceeding either cap returns
+ceiling of **500 active plans** applies regardless of tier; exceeding either cap returns
 `409`. Only *active* plans count — expired/cancelled/terminal plans free capacity, so
 cancelling stale plans (or choosing a shorter `expiresIn`) is the fastest way to make room.
 
@@ -2574,6 +2578,12 @@ Use `$` when you want only cashtag-specific mentions. Omit `$` for a more inclus
 - Trending narratives: 5 credits ($0.045 via x402)
 - Chat: speed-based; via x402 pay `exact` (fast $1, expert $2) or `upto` (fast $2, expert $6)
 - `/v2/ping`, `/v2/key-status`: free
+- Every `/v2/*` response to an authenticated request carries an **`x-elfa-credits`** header with
+  the credits that request consumed — read it instead of diffing `/v2/key-status` around a call.
+  It is present on error responses raised after the key is accepted, and absent when the request
+  is rejected before the key resolves, because nothing was charged. Streaming responses and
+  charges that finalize after the response is flushed carry the pre-flush subtotal, so
+  `/v2/key-status` stays the authoritative balance for those.
 
 **Auto query lifecycle:**
 - **Validate before create (recommended):** Call `POST /v2/auto/queries/validate` first to preview
@@ -2590,8 +2600,8 @@ Use `$` when you want only cashtag-specific mentions. Omit `$` for a more inclus
   inform the user and provide the code snippet instead.
 - Always use the v2 endpoints (paths starting with `/v2/` or `/x402/v2/`).
 - For experimental endpoints (trending-tokens, smart-stats), mention that behavior may
-  change without notice. `/v2/data/market-events` is **beta and access-gated** — its path and
-  contract may change.
+  change without notice. `/v2/data/market-events` is **Enterprise only** — a key without
+  access gets `403`.
 - Measurement endpoints return **no raw tweet text and no sentiment field** — do not promise
   either. Fetching post content requires the user's own X API key.
 - Auto no longer accepts order actions (`market_order` / `limit_order`) on new queries or
