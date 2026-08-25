@@ -282,9 +282,11 @@ Use the `bash_tool` to call the Elfa API via curl.
 | Agent Chat | — | ✓ | ✓ |
 | Agent Automation | — | ✓ | ✓ |
 
-Pay-per-use: **PAYG** is $0.009/credit at 60 RPM with an API key, drawn down from a prepaid
-credit balance ($10 minimum top-up, card or USDC); **x402** is $0.009/credit at 1,000 RPM with
+Pay-per-use: **PAYG** is $0.0145/credit at 60 RPM with an API key, drawn down from a prepaid
+credit balance ($20 minimum top-up, card or USDC); **x402** is $0.0145/credit at 1,000 RPM with
 no account. Same per-credit price — pick on integration style.
+
+Accounts already on PAYG before the increase keep $0.009 per credit until 28 September 2026.
 
 **What each tier unlocks:**
 - **Free** — core social data: trending tokens, smart stats, top mentions, keyword mentions,
@@ -362,8 +364,8 @@ EVM signing costs no gas. On Solana the facilitator pays the transaction fee.
 
 | Tier | Credits | USDC Cost | Endpoints |
 |---|---|---|---|
-| Standard | 1 | $0.009 | trending-tokens, smart-stats, keyword-mentions, token-news, top-mentions, trending-cas |
-| Extended | 5 | $0.045 | event-summary, trending-narratives |
+| Standard | 1 | $0.0145 | trending-tokens, smart-stats, keyword-mentions, token-news, top-mentions, trending-cas |
+| Extended | 5 | $0.0725 | event-summary, trending-narratives |
 
 Data endpoints are `exact` only. `/x402/v2/chat` is speed-based and offers both schemes — pay a
 flat price with `exact`, or authorize a ceiling with `upto` and settle only what the turn used:
@@ -795,7 +797,7 @@ existing queries/sessions may become inaccessible.
 | `DELETE /v2/auto/queries/:queryId` (Delete terminal query) | Free | |
 | `GET /v2/auto/validate-symbol/:exchange/:symbol` | Free | |
 
-> Reference USD values for Create: baseline `$0.045`, fast call `+$0.045`, expert call `+$0.162`. Use `/queries/validate` to preview exact cost before committing.
+> Reference USD values for Create: baseline `$0.0725`, fast call `+$0.0725`, expert call `+$0.261`. Use `/queries/validate` to preview exact cost before committing.
 
 **x402 mode (`/x402/v2/auto/*`) — pay-per-request in USDC on Base, Arbitrum, Polygon, Avalanche, or Solana:**
 
@@ -809,9 +811,9 @@ settles only what the turn actually used:
 
 | Operation | Credits | USDC Cost |
 |---|---|---|
-| Query creation — baseline | 5 | $0.045 |
-| Per fast LLM call | +5 | +$0.045 |
-| Per expert LLM call | +18 | +$0.162 |
+| Query creation — baseline | 5 | $0.0725 |
+| Per fast LLM call | +5 | +$0.0725 |
+| Per expert LLM call | +18 | +$0.261 |
 | Validate, poll, cancel, sessions, stream | Free | Free |
 
 **x402 Auto example:**
@@ -2573,9 +2575,9 @@ The `ticker` parameter behavior changes based on whether you include the `$` pre
 Use `$` when you want only cashtag-specific mentions. Omit `$` for a more inclusive search.
 
 **Credit costs (data endpoints — both modes):**
-- Most endpoints: 1 credit per call ($0.009 via x402)
-- Event summary: 5 credits ($0.045 via x402)
-- Trending narratives: 5 credits ($0.045 via x402)
+- Most endpoints: 1 credit per call ($0.0145 via x402)
+- Event summary: 5 credits ($0.0725 via x402)
+- Trending narratives: 5 credits ($0.0725 via x402)
 - Chat: speed-based; via x402 pay `exact` (fast $1, expert $2) or `upto` (fast $2, expert $6)
 - `/v2/ping`, `/v2/key-status`: free
 - Every `/v2/*` response to an authenticated request carries an **`x-elfa-credits`** header with
