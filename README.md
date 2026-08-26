@@ -222,7 +222,7 @@ Set up the Elfa GRVT bot and create a SOL RSI dip-buy strategy with TP and SL
 | `/v2/auto/executions` | List and get trigger execution records |
 | `/v2/auto/validate-symbol/:exchange/:symbol` | Check whether a symbol is supported on a venue — pre-flight for `price`/`ta` data sources |
 
-Auto mutations are HMAC-signed in API key mode unless the action is a supported notification (`notify`, `telegram_bot`, `webhook`, or `llm` callback to those), which skips HMAC. x402 mode uses `x-elfa-agent-secret` instead of HMAC. Always-signing remains safe in API key mode — signed requests are accepted on every route. See [Auto docs](https://docs.elfa.ai/auto/overview).
+API key mode authenticates every `/v2/auto/*` route with `x-elfa-api-key` alone. x402 mode uses `x-elfa-agent-secret` on query lifecycle routes instead. See [Auto docs](https://docs.elfa.ai/auto/overview).
 
 Full details at [docs.elfa.ai](https://docs.elfa.ai).
 

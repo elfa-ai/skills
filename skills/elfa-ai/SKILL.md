@@ -8,7 +8,8 @@ description: >
   EQL queries, trigger pipelines, and agent workflows that react to market conditions.
   Auto can trigger on X/Twitter posts, Telegram channels, news events, SEC filings,
   Kalshi and Polymarket prediction markets,
-  funding rates, liquidation cascades, and the Fear & Greed index, re-fire
+  funding rates, liquidation cascades, the Fear & Greed index, and new followers
+  on a watched X account, re-fire
   recurring plans via `repeat`, run calendar schedules via
   `cron.schedule`, and monitor crypto plus HIP-3 assets (equities, indices, commodities, FX,
   pre-IPO — 24/7). Supports API-key calls and x402 pay-per-request USDC on Base, Arbitrum,
@@ -46,10 +47,9 @@ Elfa supports API-key auth and x402 keyless payments. API keys are optional when
 | Variable | Required | Use |
 |---|---:|---|
 | `ELFA_API_KEY` | No | API-key authenticated requests. Get a free key at <https://go.elfa.ai/claude-skills>. |
-| `ELFA_HMAC_SECRET` | No | HMAC secret for Auto mutations that require signing. Notification-only mutations (`notify`, `telegram_bot`, `webhook`, or `llm` callbacks to those) accept unsigned requests; unknown or non-notification action shapes are signed fail-safe. Always-signing remains compatible if you prefer to avoid edge cases. |
 | `ELFA_AGENT_SECRET` | No | Persistent agent identity secret for x402 Auto. Generate once with `openssl rand -hex 32` and reuse for query lifecycle calls. |
 
-> **Do not reuse these as your webhook signing secret.** `webhook.params.signingSecret` is a
+> **Do not reuse this as your webhook signing secret.** `webhook.params.signingSecret` is a
 > *separate* per-webhook secret that verifies deliveries **from** Elfa **to** your server. See
 > [Webhook signature verification](#webhook-signature-verification).
 
@@ -121,14 +121,10 @@ mode only** — they have no `/x402/v2/` counterpart.
 
 #### Auto endpoints (Condition Engine)
 
-Auto endpoints are available under `/v2/auto/` (API key, HMAC on some mutation routes) and
+Auto endpoints are available under `/v2/auto/` (API key) and
 `/x402/v2/auto/` (keyless). See [Auto docs](https://docs.elfa.ai/auto/overview) for full details.
 
-> **Auth column legend (tables below).** `API key` = `x-elfa-api-key` only (no HMAC).
-> `Conditional` = HMAC is bypassed for supported notification action shapes
-> (`notify`, `telegram_bot`, `webhook`, `llm` callback to those) and enforced for unknown
-> or non-notification shapes. See
-> [HMAC Bypass for Notification-Only Mutations](#hmac-bypass-for-notification-only-mutations).
+> **Auth column legend (tables below).** `API key` = `x-elfa-api-key` only.
 
 **API key mode (`/v2/auto/*`):**
 
@@ -138,11 +134,11 @@ _Query lifecycle:_
 |---|---|---|---|
 | `/v2/auto/chat` | POST | Builder Chat — AI-assisted query building (produces drafts only) | API key |
 | `/v2/auto/queries/validate` | POST | Validate EQL and preview cost | API key |
-| `/v2/auto/queries` | POST | Create and activate a query | Conditional |
+| `/v2/auto/queries` | POST | Create and activate a query | API key |
 | `/v2/auto/queries` | GET | List queries | API key |
 | `/v2/auto/queries/:queryId` | GET | Poll query status and executions (resolves query or draft) | API key |
-| `/v2/auto/queries/:queryId/cancel` | POST | Cancel an `active` query (returns `409` if status is terminal) | Conditional |
-| `/v2/auto/queries/:queryId` | DELETE | Delete a terminal query — only when status is `triggered` / `expired` / `cancelled` / `failed` (returns `409` otherwise; active queries must be cancelled first) | Conditional |
+| `/v2/auto/queries/:queryId/cancel` | POST | Cancel an `active` query (returns `409` if status is terminal) | API key |
+| `/v2/auto/queries/:queryId` | DELETE | Delete a terminal query — only when status is `triggered` / `expired` / `cancelled` / `failed` (returns `409` otherwise; active queries must be cancelled first) | API key |
 | `/v2/auto/queries/stream` | GET | Stream notifications for **all** your queries on one connection (API-key only — not agent/x402) | API key |
 | `/v2/auto/queries/:queryId/stream` | GET | Stream notifications for a single query via SSE | API key |
 
@@ -150,12 +146,12 @@ _Query drafts (editable, not yet active):_
 
 | Endpoint | Method | Description | Auth |
 |---|---|---|---|
-| `/v2/auto/queries/drafts` | POST | Create or update (upsert) a query draft | Conditional |
+| `/v2/auto/queries/drafts` | POST | Create or update (upsert) a query draft | API key |
 | `/v2/auto/queries/drafts` | GET | List editable query drafts | API key |
 | `/v2/auto/queries/drafts/:draftId` | GET | Get a specific draft (legacy — prefer `GET /queries/{queryId}`) | API key |
 | `/v2/auto/queries/drafts/:draftId` | DELETE | Delete a query draft | API key |
 | `/v2/auto/queries/drafts/:draftId/validate` | POST | Validate a stored draft | API key |
-| `/v2/auto/queries/drafts/:draftId/convert` | POST | Convert a draft into an active query | Conditional |
+| `/v2/auto/queries/drafts/:draftId/convert` | POST | Convert a draft into an active query | API key |
 
 _LLM sessions (for `action.type: "llm"` queries):_
 
@@ -206,7 +202,7 @@ When you need exact endpoint metadata, load these instead of walking the docs pa
 
 | Source | URL | Use for |
 |---|---|---|
-| Endpoint manifest | `https://docs.elfa.ai/agent/endpoints.manifest.json` | Method/path, docs route, required headers, HMAC requirement with mounted signature path template, payment requirement, request/response examples |
+| Endpoint manifest | `https://docs.elfa.ai/agent/endpoints.manifest.json` | Method/path, docs route, required headers, payment requirement, request/response examples |
 | Docs map | `https://docs.elfa.ai/llms.txt` | Canonical page map + machine-readable links. A plain `GET https://docs.elfa.ai/` returns the same index as `text/plain` to any client that does not ask for HTML |
 | Full docs text | `https://docs.elfa.ai/llms-full.txt` | Only when deeper page context is needed |
 | OpenAPI spec | bundled at `references/swagger.json` | Exact schemas, params, and defaults |
@@ -223,8 +219,8 @@ there is an MCP server that exposes the same API as tools:
 commands, prefer this skill — it costs no context until you use it.
 
 When you are writing TypeScript or Python rather than calling the API by hand, the official
-SDKs (`@elfa-ai/sdk`, `elfa-sdk`) wrap the same surface with typed responses, retries, SSE
-streaming, and HMAC signing. See [docs.elfa.ai/sdks](https://docs.elfa.ai/sdks).
+SDKs (`@elfa-ai/sdk`, `elfa-sdk`) wrap the same surface with typed responses, retries, and SSE
+streaming. See [docs.elfa.ai/sdks](https://docs.elfa.ai/sdks).
 
 ## How to use this skill
 
@@ -282,9 +278,12 @@ Use the `bash_tool` to call the Elfa API via curl.
 | Agent Chat | — | ✓ | ✓ |
 | Agent Automation | — | ✓ | ✓ |
 
-Pay-per-use: **PAYG** is $0.009/credit at 60 RPM with an API key, drawn down from a prepaid
-credit balance ($10 minimum top-up, card or USDC); **x402** is $0.009/credit at 1,000 RPM with
+Pay-per-use: **PAYG** is $0.0145/credit at 60 RPM with an API key, drawn down from a prepaid
+credit balance ($20 minimum top-up, card or USDC); **x402** is $0.0145/credit at 1,000 RPM with
 no account. Same per-credit price — pick on integration style.
+
+Accounts already on PAYG keep $0.009 per credit until 28 September 2026, 16:00 UTC
+(29 September, 00:00 SGT). x402 has no accounts, so its price applies to every payer at once.
 
 **What each tier unlocks:**
 - **Free** — core social data: trending tokens, smart stats, top mentions, keyword mentions,
@@ -362,8 +361,8 @@ EVM signing costs no gas. On Solana the facilitator pays the transaction fee.
 
 | Tier | Credits | USDC Cost | Endpoints |
 |---|---|---|---|
-| Standard | 1 | $0.009 | trending-tokens, smart-stats, keyword-mentions, token-news, top-mentions, trending-cas |
-| Extended | 5 | $0.045 | event-summary, trending-narratives |
+| Standard | 1 | $0.0145 | trending-tokens, smart-stats, keyword-mentions, token-news, top-mentions, trending-cas |
+| Extended | 5 | $0.0725 | event-summary, trending-narratives |
 
 Data endpoints are `exact` only. `/x402/v2/chat` is speed-based and offers both schemes — pay a
 flat price with `exact`, or authorize a ceiling with `upto` and settle only what the turn used:
@@ -629,142 +628,12 @@ When the prompt is account-anchored, **start with `tweet`** — do not route to 
 
 | Mode | Route prefix | Auth | Best for |
 |---|---|---|---|
-| API key + HMAC | `/v2/auto/*` | `x-elfa-api-key` on all + HMAC on mutations that require signing (notification-only mutations skip HMAC) | Apps, dashboards |
+| API key | `/v2/auto/*` | `x-elfa-api-key` on all routes | Apps, dashboards |
 | x402 keyless | `/x402/v2/auto/*` | x402 payment + `x-elfa-agent-secret` | AI agents, bots |
-
-#### HMAC signing (API key mode)
-
-Some mutations under `/v2/auto/*` require HMAC signing in
-addition to `x-elfa-api-key`. **Notification-only mutations skip HMAC** so agents can
-onboard without provisioning a secret — see
-[HMAC Bypass for Notification-Only Mutations](#hmac-bypass-for-notification-only-mutations)
-below for the per-route decision rule. Read-only endpoints (GET) only need the API key.
-`POST /v2/auto/chat` is fully ungated and never needs HMAC.
-
-> **Always-signing remains safe.** If your client signs every mutation, you do not need
-> to opt into the bypass. Signed requests are accepted on every route. The bypass is
-> purely an optimization for clients that want to skip the HMAC setup step.
-
-**Required headers for signed mutations:**
-
-```
-x-elfa-api-key: <api_key>
-x-elfa-timestamp: <unix_seconds>
-x-elfa-signature: <hex_hmac_sha256>
-```
-
-**Signing payload:**
-
-```
-timestamp + method + mounted_path + body
-```
-
-**CRITICAL:** `mounted_path` is the path **inside** `/v2/auto`, NOT the full URL path.
-- Request URL: `/v2/auto/queries` → signed path: `/queries`
-- Request URL: `/v2/auto/chat` → signed path: `/chat`
-- Request URL: `/v2/auto/queries/q_123` → signed path: `/queries/q_123`
-
-**Replay protection:** timestamp must be within 30 seconds.
-
-**TypeScript signing example:**
-
-```typescript
-import crypto from "crypto";
-
-const hmacSecret = process.env.ELFA_HMAC_SECRET!;
-const apiKey = process.env.ELFA_API_KEY!;
-
-function signAutoRequest(method: string, mountedPath: string, body: string = "") {
-  const timestamp = Math.floor(Date.now() / 1000).toString();
-  const payload = `${timestamp}${method}${mountedPath}${body}`;
-  const signature = crypto
-    .createHmac("sha256", hmacSecret)
-    .update(payload)
-    .digest("hex");
-  return { timestamp, signature };
-}
-
-// Example: Create a query
-const body = JSON.stringify({
-  title: "BTC breakout alert",
-  description: "Notify when BTC trades above 100k.",
-  query: {
-    conditions: {
-      AND: [{ source: "price", method: "current", args: { symbol: "BTC", exchange: "hyperliquid" }, operator: ">", value: 100000 }]
-    },
-    actions: [{ stepId: "step_1", type: "notify", params: { message: "BTC crossed 100k" } }],
-    expiresIn: "24h"
-  }
-});
-
-const { timestamp, signature } = signAutoRequest("POST", "/queries", body);
-
-const response = await fetch("https://api.elfa.ai/v2/auto/queries", {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-    "x-elfa-api-key": apiKey,
-    "x-elfa-timestamp": timestamp,
-    "x-elfa-signature": signature,
-  },
-  body,
-});
-```
-
-**Bash signing example:**
-
-```bash
-TIMESTAMP=$(date +%s)
-METHOD="POST"
-PATH_SIGN="/queries"
-BODY='{"title":"BTC alert","query":{"conditions":{"AND":[{"source":"price","method":"current","args":{"symbol":"BTC","exchange":"hyperliquid"},"operator":">","value":100000}]},"actions":[{"stepId":"step_1","type":"notify","params":{"message":"BTC crossed 100k"}}],"expiresIn":"24h"}}'
-SIGNATURE=$(echo -n "${TIMESTAMP}${METHOD}${PATH_SIGN}${BODY}" | openssl dgst -sha256 -hmac "$ELFA_HMAC_SECRET" | cut -d' ' -f2)
-
-curl -s -X POST "https://api.elfa.ai/v2/auto/queries" \
-  -H "Content-Type: application/json" \
-  -H "x-elfa-api-key: $ELFA_API_KEY" \
-  -H "x-elfa-timestamp: $TIMESTAMP" \
-  -H "x-elfa-signature: $SIGNATURE" \
-  -d "$BODY"
-```
-
-#### HMAC Bypass for Notification-Only Mutations
-
-Mutations whose EQL action is a pure notification skip the HMAC requirement. This lets
-agents onboard without first generating an HMAC secret.
-
-**Notification action types (HMAC bypassed):**
-
-- `notify`
-- `telegram_bot`
-- `webhook`
-- `llm` whose `params.callback.action.type` is one of the above
-
-**Decision is per-route:**
-
-| Route | Decision input |
-|---|---|
-| `POST /v2/auto/queries`, `POST /v2/auto/queries/drafts` | Request body's `query.actions[*].type` |
-| `POST /v2/auto/queries/drafts/:id/convert` | Stored draft's actions |
-| `POST /v2/auto/queries/:id/cancel` (cancel active query) | Stored query's actions |
-| `DELETE /v2/auto/queries/:id` (delete terminal query) | Stored query's actions |
-
-If the lookup fails or the action type is unknown, HMAC is enforced (fail-safe). Unknown
-action types added in future API versions default to requiring HMAC, so always-signing
-clients keep working.
-
-`POST /v2/auto/chat` is fully ungated regardless of content because it produces drafts
-only — activation flows through `convert`, which applies the same mutation rules.
-
-**Why this matters for agents.** An agent that only ever sends `notify` / `telegram_bot` /
-`webhook` actions can call `POST /v2/auto/queries`, `POST /v2/auto/queries/:id/cancel`,
-`DELETE /v2/auto/queries/:id`, etc. with just `x-elfa-api-key` — no HMAC secret
-provisioning required. Anything with an unknown or non-notification action shape needs
-`ELFA_HMAC_SECRET`.
 
 #### x402 Auto (keyless agent mode)
 
-For x402 Auto, no API key or HMAC is needed. Instead:
+For x402 Auto, no API key is needed. Instead:
 - Send the x402 payment header `PAYMENT-SIGNATURE`. x402 **v2 only** — `X-PAYMENT` is accepted
   as an alias for the header name, but the payload must be a v2 payment payload
 - Include `x-elfa-agent-secret` on all query lifecycle routes
@@ -795,7 +664,7 @@ existing queries/sessions may become inaccessible.
 | `DELETE /v2/auto/queries/:queryId` (Delete terminal query) | Free | |
 | `GET /v2/auto/validate-symbol/:exchange/:symbol` | Free | |
 
-> Reference USD values for Create: baseline `$0.045`, fast call `+$0.045`, expert call `+$0.162`. Use `/queries/validate` to preview exact cost before committing.
+> Reference USD values for Create: baseline `$0.0725`, fast call `+$0.0725`, expert call `+$0.261`. Use `/queries/validate` to preview exact cost before committing.
 
 **x402 mode (`/x402/v2/auto/*`) — pay-per-request in USDC on Base, Arbitrum, Polygon, Avalanche, or Solana:**
 
@@ -809,9 +678,9 @@ settles only what the turn actually used:
 
 | Operation | Credits | USDC Cost |
 |---|---|---|
-| Query creation — baseline | 5 | $0.045 |
-| Per fast LLM call | +5 | +$0.045 |
-| Per expert LLM call | +18 | +$0.162 |
+| Query creation — baseline | 5 | $0.0725 |
+| Per fast LLM call | +5 | +$0.0725 |
+| Per expert LLM call | +18 | +$0.261 |
 | Validate, poll, cancel, sessions, stream | Free | Free |
 
 **x402 Auto example:**
@@ -864,7 +733,7 @@ without spending credits.
 
 1. Retry transient network errors with exponential backoff.
 2. On `400` / `422` validation failure → repair query using [Validation Errors table](#validation-errors--next-action-table), re-validate.
-3. On `401` / `403` auth failure → refresh credentials or verify Auto is enabled for the API key.
+3. On `401` / `403` auth failure → refresh credentials or re-check the key's permissions.
 4. On `402` x402 payment failure → re-price and retry with valid payment payload.
 5. On `410` (SSE stream closed) → re-open stream or fall back to polling.
 
@@ -1591,6 +1460,25 @@ global reading, no per-market identity — so its methods take **no ticker**. Pa
 { "source": "fear_greed", "method": "value", "args": {}, "operator": "crosses_below", "value": 20 }
 ```
 
+**Account-follow source (`follow`) — new followers on a watched X account:**
+
+`args.account` is the **watched** account (the one being followed) as a bare X username;
+the method describes the **follower** (the account doing the following).
+
+| Method | Args | Returns | Operators | Description |
+|---|---|---|---|---|
+| `follower_follower_count` | `account` | number | `>` / `<` / `>=` / `<=` / `==` / `!=` | Follower count of the account that performed the follow. |
+
+```json
+{ "source": "follow", "method": "follower_follower_count", "args": { "account": "elfa_ai" }, "operator": ">", "value": 10000 }
+```
+
+Coverage is bounded and the limits change how you should write the plan — only follows by
+accounts inside Elfa's tracked set are seen, detection lags by up to ~24h, and unfollows and
+re-follows never fire. Pair with `repeat` to alert on every new follower. Builder Chat cannot
+author these yet; build them against Validate/Create directly. Read
+[Account Follows](https://docs.elfa.ai/auto/account-follows) before using this source.
+
 **Supported operators:** `>`, `<`, `>=`, `<=`, `==`, `!=`, `crosses_above`, `crosses_below`
 
 **Dynamic comparisons:** `value` can reference another live data source instead of a literal:
@@ -2045,7 +1933,7 @@ convention**, not the wire format Auto sends (see the payload above):
 
 #### SSE frame format
 
-There are two SSE streams; both are **free**, both are `GET`, neither requires HMAC, and both
+There are two SSE streams; both are **free**, both are `GET`, and both
 use the **same auth used to create the query** (`x-elfa-api-key` for API-key queries, the x402
 secret for x402 queries — *not* limited to `x-elfa-api-key`). For minimal setup, attach a
 `notify` action with a `message` — those notifications are retrievable only via SSE or poll.
@@ -2120,16 +2008,15 @@ requires signatures will reject every delivery.
 
 LLM callback webhooks take the same destination params under `params.callback.action.params`.
 
-**Which secret to use — three distinct secrets, never interchange them:**
+**Which secret to use — two distinct secrets, never interchange them:**
 
 | Secret | Direction | Purpose |
 |---|---|---|
 | `x-elfa-api-key` | you → Elfa | Authenticates your client |
-| `ELFA_HMAC_SECRET` | you → Elfa | Signs your *requests* to Elfa (Auto trade mutations, exchange linking) |
 | `webhook.params.signingSecret` | Elfa → you | Signs Elfa's outbound webhook *deliveries* to your server |
 
 Generate a separate high-entropy secret per webhook action (`openssl rand -hex 32`). Do **not**
-reuse the API key or the request-HMAC secret here.
+reuse the API key or the x402 agent secret here.
 
 Signing inputs:
 
@@ -2329,7 +2216,7 @@ Full detail: [Notifications](https://docs.elfa.ai/auto/notifications) |
 
 | Symptom | Likely Cause | Fix |
 |---|---|---|
-| `400` / `401` when polling or streaming | Missing/invalid API key or auth headers | Send `x-elfa-api-key`; include HMAC headers where required |
+| `400` / `401` when polling or streaming | Missing/invalid API key or auth headers | Send `x-elfa-api-key` |
 | Webhook signature mismatch | Signing wrong payload (not raw body), or hashing the secret before use | Key is the **raw** `signingSecret`, payload is `timestamp + "." + eventId + "." + rawBody`. Do not use `SHA256(secret)` as the key |
 | No signature headers on webhook deliveries | No explicit `signingSecret` set on the webhook action | Set `params.signingSecret` and recreate the query |
 | Duplicate downstream actions | No idempotency on event processing | Dedupe by `eventId` before enqueue/execute |
@@ -2408,7 +2295,7 @@ committing, or batch authoring flows.
 1. `POST /v2/auto/queries/drafts` — create or update a draft (idempotent upsert).
 2. `GET /v2/auto/queries/drafts` — list editable drafts.
 3. `POST /v2/auto/queries/drafts/:draftId/validate` — validate stored draft.
-4. `POST /v2/auto/queries/drafts/:draftId/convert` — promote draft → active query (**HMAC conditional**: bypassed when the stored draft uses a notification action, enforced otherwise).
+4. `POST /v2/auto/queries/drafts/:draftId/convert` — promote draft → active query.
 5. `DELETE /v2/auto/queries/drafts/:draftId` — discard draft.
 
 > `GET /v2/auto/queries/drafts/:draftId` still works but is legacy — prefer
@@ -2493,7 +2380,7 @@ See the [Elfa API documentation](https://docs.elfa.ai) for the full parameter sp
 - Always include proper error handling
 - For API key mode: show the `x-elfa-api-key` header (use a placeholder like `YOUR_API_KEY`)
 - For x402 mode: show the `/x402/v2/` prefix and recommend `@x402/fetch` or `@x402/axios`
-- For Auto mutations that require signing: include HMAC signing code (notification-only mutations skip HMAC); for x402 use the agent-secret header
+- For Auto mutations in x402 mode: include the agent-secret header
 - Include TypeScript types when generating TS code
 - Add comments explaining each parameter
 - For pagination endpoints, show how to paginate through results
@@ -2517,7 +2404,7 @@ See the [Elfa API documentation](https://docs.elfa.ai) for the full parameter sp
 
 **Auto code generation guidance:**
 - Always include the validate → create flow (never create without validating first)
-- For API key mode: include an HMAC signing helper for mutations that require signing (notification-only mutations can be made with just `x-elfa-api-key`)
+- For API key mode: send `x-elfa-api-key` on every call, including mutations
 - For x402 mode: include `x-elfa-agent-secret` header on all query lifecycle calls
 - Include Builder Chat examples when the user wants natural-language query building
 - Show how to poll or stream for results after query creation
@@ -2573,9 +2460,9 @@ The `ticker` parameter behavior changes based on whether you include the `$` pre
 Use `$` when you want only cashtag-specific mentions. Omit `$` for a more inclusive search.
 
 **Credit costs (data endpoints — both modes):**
-- Most endpoints: 1 credit per call ($0.009 via x402)
-- Event summary: 5 credits ($0.045 via x402)
-- Trending narratives: 5 credits ($0.045 via x402)
+- Most endpoints: 1 credit per call ($0.0145 via x402)
+- Event summary: 5 credits ($0.0725 via x402)
+- Trending narratives: 5 credits ($0.0725 via x402)
 - Chat: speed-based; via x402 pay `exact` (fast $1, expert $2) or `upto` (fast $2, expert $6)
 - `/v2/ping`, `/v2/key-status`: free
 - Every `/v2/*` response to an authenticated request carries an **`x-elfa-credits`** header with
@@ -2618,8 +2505,6 @@ Use `$` when you want only cashtag-specific mentions. Omit `$` for a more inclus
 - x402 and API key credits are independent — they do not overlap or share balances.
 - For x402 documentation and setup, refer users to https://docs.elfa.ai/x402-payments.
 - For Auto documentation, refer users to https://docs.elfa.ai/auto/overview.
-- Auto HMAC signing uses the **mounted path** (e.g., `/queries`), NOT the full URL path
-  (`/v2/auto/queries`). Using the full path will fail signature verification.
 - Auto x402 agent secret must be persistent — do not rotate per request.
 - For the full list of Auto capabilities, triggers, and query templates, see
   https://docs.elfa.ai/auto/capabilities and https://docs.elfa.ai/auto/query-model.
