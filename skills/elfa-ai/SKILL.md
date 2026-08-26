@@ -1027,8 +1027,6 @@ Per-venue data notes:
   `hyperliquid` or `binance` for volume conditions.
 - `binance` reads its **USD-M perp** markets and uses Binance's own base-symbol convention
   (`1000PEPE`, not `kPEPE`), validated against Binance's live perp catalog at create time.
-- `pacifica` has no market-data feed, so it is **not** a valid `exchange` for `price`/`ta`
-  conditions.
 
 ```json
 { "source": "price", "method": "current", "args": { "symbol": "BTC", "exchange": "hyperliquid" }, "operator": ">", "value": 100000 }
