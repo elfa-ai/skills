@@ -1,3 +1,0 @@
-event: end
-data: {"code":"QUERY_STREAM_CLOSED","status":"triggered","queryId":"b6f400e9-...placeholder..."}
-
