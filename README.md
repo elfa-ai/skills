@@ -1,6 +1,6 @@
 # Elfa AI Skills
 
-Real-time crypto social intelligence and automated condition-engine skills for AI agents. Track trending tokens, surface narratives, search mentions, run market analysis, build automated trigger-based workflows, and wire Elfa Auto signals into GRVT execution.
+Real-time crypto social intelligence and automated condition-engine skills for AI agents. Track trending tokens, surface narratives, search mentions, run market analysis, and build automated trigger-based workflows.
 
 Works with **Claude Code**, **OpenCode**, **Cursor**, **GitHub Copilot**, **Codex**, and any tool that supports the [Agent Skills](https://agentskills.io) standard.
 
@@ -100,20 +100,11 @@ For a bundled `.skill` package with API docs and scripts included (currently `el
 
 </details>
 
-### Setting up `elfa-grvt-bot`
-
-`elfa-grvt-bot` ships a full Python project under `assets/source/`. After install, run the skill's bootstrap to create the bot's working directory, install dependencies, start the receiver, and open a public tunnel. From your agent, just ask:
-
-> "Set up the Elfa GRVT bot."
-
-The agent will execute `scripts/bootstrap.py` and walk you through credential gathering for Elfa, GRVT, and (optionally) Telegram. See [`skills/elfa-grvt-bot/SKILL.md`](skills/elfa-grvt-bot/SKILL.md) for the full setup walkthrough.
-
 ## Skills
 
 | Skill | Description |
 |---|---|
 | [elfa-ai](skills/elfa-ai) | Crypto social intelligence + Auto condition engine — trending tokens, mentions, narratives, AI market analysis, and automated trigger workflows |
-| [elfa-grvt-bot](skills/elfa-grvt-bot) | Self-hosted Elfa Auto to GRVT perpetual futures bot with FastAPI receiver, EIP-712 signing, SQLite registry, Telegram alerts, and OTOCO TP/SL execution |
 
 ## Spec validation
 
@@ -123,7 +114,6 @@ Validate a skill before publishing changes:
 
 ```bash
 uvx --from skills-ref agentskills validate ./skills/elfa-ai
-uvx --from skills-ref agentskills validate ./skills/elfa-grvt-bot
 ```
 
 ## Get an API key
@@ -177,12 +167,6 @@ Create an Auto query that triggers when ETH RSI drops below 30 on the 1h chart
 ```
 Help me build a multi-condition trigger for BTC + ETH breakout confirmation
 ```
-
-```
-Set up the Elfa GRVT bot and create a SOL RSI dip-buy strategy with TP and SL
-```
-
-`elfa-grvt-bot` is live-trading infrastructure. It is prod-only for GRVT and asks for explicit confirmation before activating any strategy.
 
 ## API endpoints
 
