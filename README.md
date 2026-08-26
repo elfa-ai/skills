@@ -114,7 +114,6 @@ The agent will execute `scripts/bootstrap.py` and walk you through credential ga
 |---|---|
 | [elfa-ai](skills/elfa-ai) | Crypto social intelligence + Auto condition engine — trending tokens, mentions, narratives, AI market analysis, and automated trigger workflows |
 | [elfa-grvt-bot](skills/elfa-grvt-bot) | Self-hosted Elfa Auto to GRVT perpetual futures bot with FastAPI receiver, EIP-712 signing, SQLite registry, Telegram alerts, and OTOCO TP/SL execution |
-| [elfa-gmx](skills/elfa-gmx) | Trade GMX perpetuals through Elfa Auto — condition-driven strategies executing on GMX via the Elfa API only, plus GMX Masters competition rules and guardrails |
 
 ## Spec validation
 
@@ -125,7 +124,6 @@ Validate a skill before publishing changes:
 ```bash
 uvx --from skills-ref agentskills validate ./skills/elfa-ai
 uvx --from skills-ref agentskills validate ./skills/elfa-grvt-bot
-uvx --from skills-ref agentskills validate ./skills/elfa-gmx
 ```
 
 ## Get an API key
