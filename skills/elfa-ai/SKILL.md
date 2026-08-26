@@ -286,7 +286,7 @@ Pay-per-use: **PAYG** is $0.0145/credit at 60 RPM with an API key, drawn down fr
 credit balance ($20 minimum top-up, card or USDC); **x402** is $0.0145/credit at 1,000 RPM with
 no account. Same per-credit price — pick on integration style.
 
-Accounts already on PAYG before the increase keep $0.009 per credit until 28 September 2026.
+Accounts already on PAYG before the increase keep $0.009 per credit until 28 September 2026, 16:00 UTC (29 September, 00:00 SGT).
 
 **What each tier unlocks:**
 - **Free** — core social data: trending tokens, smart stats, top mentions, keyword mentions,
