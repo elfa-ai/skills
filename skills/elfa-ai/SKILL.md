@@ -104,12 +104,12 @@ except `key-status` which is API key mode only.
 | `/v2/ping` | GET | Health check — **no auth required** (API key mode only) | Free |
 | `/v2/key-status` | GET | API key usage & limits (API key only) | Free |
 | `/v2/aggregations/trending-tokens` | GET | Trending tokens by mention count | 1 |
-| `/v2/account/smart-stats` | GET | Smart follower & engagement stats | 1 |
+| `/v2/account/smart-stats` | GET | Smart follower & engagement stats — **legacy, will be removed 28 Oct 2026** | 1 |
 | `/v2/data/top-mentions` | GET | Top mentions for a ticker symbol | 1 |
 | `/v2/data/keyword-mentions` | GET | Search mentions by keywords or account | 1 |
 | `/v2/data/event-summary` | GET | AI event summaries from keyword mentions | 5 |
 | `/v2/data/trending-narratives` | GET | Trending narrative clusters (Grow+ / PAYG) | 5 |
-| `/v2/data/token-news` | GET | Token-related news mentions | 1 |
+| `/v2/data/token-news` | GET | Token-related news mentions (tweet source only) | 1 |
 | `/v2/data/market-events` | GET | Impact-scored market events (Enterprise only) | Enterprise |
 | `/v2/aggregations/trending-cas/twitter` | GET | Trending contract addresses (Twitter) | 1 |
 | `/v2/aggregations/trending-cas/telegram` | GET | Trending contract addresses (Telegram) | 1 |
@@ -448,7 +448,7 @@ mistake.
 
 | Tier | Endpoints | What comes back |
 |---|---|---|
-| **Measurement** | `smart-stats`, `trending-cas/*`, `trending-tokens`, `top-mentions`, `keyword-mentions`, `token-news` | Counts, engagement metrics, links, account metadata. **Your system interprets them.** |
+| **Measurement** | `smart-stats` (legacy), `trending-cas/*`, `trending-tokens`, `top-mentions`, `keyword-mentions`, `token-news` | Counts, engagement metrics, links, account metadata. **Your system interprets them.** |
 | **Interpretation** | `chat`, `chat/stream`, `event-summary`, `trending-narratives` | Written analysis or summaries, with source links where available. |
 
 > **Measurement endpoints return no raw tweet text and no sentiment field.** They measure
@@ -482,6 +482,11 @@ Single calls answer questions; chains produce signals. These are the documented 
 When ranking accounts from `smart-stats`, use **ratios** (smart followers ÷ followers, average
 reach ÷ followers), not absolute counts — the endpoint returns raw metrics, not a reputation
 score.
+
+> **`smart-stats` is legacy and will be removed on 28 October 2026.** It still works until
+> then, and is not being extended before then. Chains that end in it keep working today, but
+> build new integrations on `keyword-mentions`, which returns `account.username` alongside
+> each mention's engagement metrics.
 
 #### Chat — JSON vs streaming
 
@@ -2441,7 +2446,8 @@ unix timestamps, which take priority over `timeWindow`.
   **`or`** (any term matches). Cursor-paginated — pass `metadata.cursor` from the previous
   response as `cursor`. Returns `account.username`, which feeds directly into `smart-stats`.
 - **`event-summary`** — `keywords` is **required**; `searchType` defaults to `or`.
-- **`token-news`** — V2 always returns news mentions (no `isNews` parameter).
+- **`token-news`** — V2 always returns news mentions (no `isNews` parameter). Results are X
+  posts from accounts tagged as news sources, not articles published by news outlets.
 - **`top-mentions`** — `ticker` is **required**. Account details are always included (no
   `includeAccountDetails` parameter).
 - **`smart-stats`** — the query param is `username`, not `accountName`.
@@ -2484,9 +2490,10 @@ Use `$` when you want only cashtag-specific mentions. Omit `$` for a more inclus
 - The Elfa API domain (`api.elfa.ai`) must be accessible from the network. If blocked,
   inform the user and provide the code snippet instead.
 - Always use the v2 endpoints (paths starting with `/v2/` or `/x402/v2/`).
-- For experimental endpoints (trending-tokens, smart-stats), mention that behavior may
-  change without notice. `/v2/data/market-events` is **Enterprise only** — a key without
-  access gets `403`.
+- For experimental endpoints (trending-tokens), mention that behavior may
+  change without notice. `/v2/account/smart-stats` is **legacy**: it still works, but
+  **will be removed on 28 October 2026** — say so before building on it.
+  `/v2/data/market-events` is **Enterprise only** — a key without access gets `403`.
 - Measurement endpoints return **no raw tweet text and no sentiment field** — do not promise
   either. Fetching post content requires the user's own X API key.
 - Auto no longer accepts order actions (`market_order` / `limit_order`) on new queries or
