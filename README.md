@@ -12,7 +12,7 @@ Works with **Claude Code**, **OpenCode**, **Cursor**, **GitHub Copilot**, **Code
 npx skills add elfa-ai/skills
 ```
 
-Installs both skills via the [Skills CLI](https://github.com/vercel-labs/skills); works with Claude Code, Cursor, Windsurf, Codex, and [40+ other agents](https://github.com/vercel-labs/skills#supported-agents). Add `--global` to install for all projects. Run `npx skills update` to refresh.
+Installs the skill via the [Skills CLI](https://github.com/vercel-labs/skills); works with Claude Code, Cursor, Windsurf, Codex, and [40+ other agents](https://github.com/vercel-labs/skills#supported-agents). Add `--global` to install for all projects. Run `npx skills update` to refresh.
 
 ### Manual (spec-compliant `.agents/skills/`)
 
@@ -173,12 +173,12 @@ Help me build a multi-condition trigger for BTC + ETH breakout confirmation
 | Endpoint | Description |
 |---|---|
 | `/v2/aggregations/trending-tokens` | Trending tokens by mention count |
-| `/v2/account/smart-stats` | Smart follower & engagement stats |
+| `/v2/account/smart-stats` | Smart follower & engagement stats (legacy — removed 28 Oct 2026) |
 | `/v2/data/top-mentions` | Top mentions for a ticker symbol |
 | `/v2/data/keyword-mentions` | Search mentions by keyword |
 | `/v2/data/event-summary` | AI event summaries (5 credits) |
 | `/v2/data/trending-narratives` | Trending narrative clusters (5 credits) |
-| `/v2/data/token-news` | Token-related news |
+| `/v2/data/token-news` | Token-related news — X posts from accounts tagged as news sources |
 | `/v2/data/market-events` | Impact-scored market events (Enterprise only — access-gated) |
 | `/v2/aggregations/trending-cas/twitter` | Trending contract addresses (Twitter) |
 | `/v2/aggregations/trending-cas/telegram` | Trending contract addresses (Telegram) |
