@@ -104,7 +104,7 @@ except `key-status` which is API key mode only.
 | `/v2/ping` | GET | Health check — **no auth required** (API key mode only) | Free |
 | `/v2/key-status` | GET | API key usage & limits (API key only) | Free |
 | `/v2/aggregations/trending-tokens` | GET | Trending tokens by mention count | 1 |
-| `/v2/account/smart-stats` | GET | Smart follower & engagement stats — **legacy, removed 28 Oct 2026** | 1 |
+| `/v2/account/smart-stats` | GET | Smart follower & engagement stats — **legacy, will be removed 28 Oct 2026** | 1 |
 | `/v2/data/top-mentions` | GET | Top mentions for a ticker symbol | 1 |
 | `/v2/data/keyword-mentions` | GET | Search mentions by keywords or account | 1 |
 | `/v2/data/event-summary` | GET | AI event summaries from keyword mentions | 5 |
@@ -483,10 +483,10 @@ When ranking accounts from `smart-stats`, use **ratios** (smart followers ÷ fol
 reach ÷ followers), not absolute counts — the endpoint returns raw metrics, not a reputation
 score.
 
-> **`smart-stats` is legacy and is removed on 28 October 2026.** It is not being extended in the
-> meantime. Chains that end in it still work today, but build new integrations on
-> `keyword-mentions`, which returns `account.username` alongside each mention's engagement
-> metrics.
+> **`smart-stats` is legacy and will be removed on 28 October 2026.** It still works until
+> then, and is not being extended before then. Chains that end in it keep working today, but
+> build new integrations on `keyword-mentions`, which returns `account.username` alongside
+> each mention's engagement metrics.
 
 #### Chat — JSON vs streaming
 
@@ -2491,9 +2491,9 @@ Use `$` when you want only cashtag-specific mentions. Omit `$` for a more inclus
   inform the user and provide the code snippet instead.
 - Always use the v2 endpoints (paths starting with `/v2/` or `/x402/v2/`).
 - For experimental endpoints (trending-tokens), mention that behavior may
-  change without notice. `/v2/account/smart-stats` is **legacy** and is removed on
-  **28 October 2026** — say so before building on it. `/v2/data/market-events` is
-  **Enterprise only** — a key without access gets `403`.
+  change without notice. `/v2/account/smart-stats` is **legacy**: it still works, but
+  **will be removed on 28 October 2026** — say so before building on it.
+  `/v2/data/market-events` is **Enterprise only** — a key without access gets `403`.
 - Measurement endpoints return **no raw tweet text and no sentiment field** — do not promise
   either. Fetching post content requires the user's own X API key.
 - Auto no longer accepts order actions (`market_order` / `limit_order`) on new queries or

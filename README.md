@@ -173,7 +173,7 @@ Help me build a multi-condition trigger for BTC + ETH breakout confirmation
 | Endpoint | Description |
 |---|---|
 | `/v2/aggregations/trending-tokens` | Trending tokens by mention count |
-| `/v2/account/smart-stats` | Smart follower & engagement stats (legacy — removed 28 Oct 2026) |
+| `/v2/account/smart-stats` | Smart follower & engagement stats (legacy — will be removed 28 Oct 2026) |
 | `/v2/data/top-mentions` | Top mentions for a ticker symbol |
 | `/v2/data/keyword-mentions` | Search mentions by keyword |
 | `/v2/data/event-summary` | AI event summaries (5 credits) |
