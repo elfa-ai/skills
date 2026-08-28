@@ -484,8 +484,9 @@ reach ÷ followers), not absolute counts — the endpoint returns raw metrics, n
 score.
 
 > **`smart-stats` is legacy and is removed on 28 October 2026.** It is not being extended in the
-> meantime. Chains that end in it still work today, but build new integrations on the mention
-> endpoints, which carry account context on every result.
+> meantime. Chains that end in it still work today, but build new integrations on
+> `keyword-mentions`, which returns `account.username` alongside each mention's engagement
+> metrics.
 
 #### Chat — JSON vs streaming
 
