@@ -118,15 +118,15 @@ uvx --from skills-ref agentskills validate ./skills/elfa-ai
 
 ## Get an API key
 
-Grab a free key (1,000 credits) at **https://go.elfa.ai/claude-skills**
+Register at **https://go.elfa.ai/claude-skills** and start on **pay-as-you-go** — $0.0145 per credit, $20 minimum top-up, card or USDC. The free tier is being phased out, so new integrations should start on PAYG.
 
-Set it as an environment variable:
+Set the key as an environment variable:
 
 ```bash
 export ELFA_API_KEY=your_key_here
 ```
 
-Free tier works with most endpoints. Trending narratives and AI chat require Grow+ or PAYG; streaming AI chat requires PAYG or Enterprise — see the link above for details.
+Trending narratives and AI chat require Grow+ or PAYG; streaming AI chat requires PAYG or Enterprise; market events are Enterprise only — see the link above for details.
 
 Alternatively, use **x402 keyless payments** to pay per request with USDC on Base, Arbitrum, Polygon, Avalanche, or Solana (no signup required). See the [x402 docs](https://docs.elfa.ai/x402-payments) for setup.
 
@@ -166,6 +166,10 @@ Create an Auto query that triggers when ETH RSI drops below 30 on the 1h chart
 
 ```
 Help me build a multi-condition trigger for BTC + ETH breakout confirmation
+```
+
+```
+Notify me when 3+ of the funds I track all start following the same X account
 ```
 
 ## API endpoints
