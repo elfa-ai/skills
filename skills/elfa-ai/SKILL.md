@@ -668,7 +668,9 @@ post behind them.
 **What agents get wrong:**
 
 - **Events.** `sort=relevant` ranks the last 24 hours and refuses `from`, `to`, `eventIds`,
-  `arcId` and most classification filters; `entityIds` (tokens and equities only) still filters. `q` searches events, storylines and arcs by topic, best match first.
+  `arcId`, `eventClass`, `eventType`, `implication`, `novelty` and `order=asc`; `assetClass`,
+  `alertAction`, `hasStoryline`, `notable` and `entityIds` (tokens and equities only) still
+  filter. `q` searches events, storylines and arcs by topic, best match first.
   `impacts` is empty on most events; `movedFirst` or `marketWide` set to `true` means the move
   probably has another cause. `novelty=new` does not show each story once: keep one event per
   `storylineId` for that. A `503` with `q` means search is down: retry, or drop `q`.
@@ -2560,7 +2562,7 @@ See the [Elfa API documentation](https://docs.elfa.ai) for the full parameter sp
 **Principles for code generation:**
 - For `/v2`, always mention both access modes (API key and x402) so developers know their options
 - For `/v3`, the API key is the only mode (no x402). Use `from`/`to` in unix seconds (there is no
-  `timeWindow`), page with `nextCursor` → `cursor`, and read the list at the top level of the
+  `timeWindow`; mindshare takes `period`), page with `nextCursor` → `cursor`, and read the list at the top level of the
   response. See Step 2d
 - Include the signup link `https://go.elfa.ai/claude-skills` as a comment near the
   API key placeholder, and link to `https://docs.elfa.ai/x402-payments` for x402
