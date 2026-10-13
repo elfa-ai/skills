@@ -654,7 +654,7 @@ curl -s "https://api.elfa.ai/v3/calls/positioning?entityId=$ID" \
 |---|---|
 | Times | Unix seconds, UTC, in requests and responses. Milliseconds are a `400`: divide by 1000 |
 | Time ranges | `from` is required, `to` defaults to now, both inclusive. No `from` is needed when fetching by id or searching with `q`; entities, arcs, positioning and top accounts take no range at all, and mindshare takes a `period` |
-| History | 30 days (PAYG), 60 days (Grow) or 2 years (Enterprise) back. An earlier `from` is cut, and `servedFrom` says where. `/v3/key-status` returns the start as `historyFrom` |
+| History | 30 days (PAYG), 60 days (Grow) or 2 years (Enterprise) back. An earlier `from` is cut, and `servedFrom` says where; a `to` before it is a `400`. `/v3/key-status` returns the start as `historyFrom` |
 | Paging | Pass `nextCursor` back as `cursor`. `hasMore: false` marks the last page. No offset, no total. Change anything but `limit` and the cursor is a `400` |
 | Lists | Parameters marked a list take several values, repeated or comma-separated. At most 30 ids |
 | By id | `eventIds`, `storylineIds`, `arcIds`, `callIds` and `episodeIds` fetch up to 30, with no `from` |
@@ -668,11 +668,10 @@ post behind them.
 **What agents get wrong:**
 
 - **Events.** `sort=relevant` ranks the last 24 hours and refuses `from`, `to`, ids and most
-  classification filters. `q` searches
-  events, storylines and arcs by topic, best match first. `impacts` is empty on most events;
-  `movedFirst` or `marketWide` set to `true` means the move probably has another cause.
-  `novelty=new` does not show each story once: keep one event per `storylineId` for that. A
-  `503` with `q` means search is down: retry, or drop `q`.
+  classification filters. `q` searches events, storylines and arcs by topic, best match first.
+  `impacts` is empty on most events; `movedFirst` or `marketWide` set to `true` means the move
+  probably has another cause. `novelty=new` does not show each story once: keep one event per
+  `storylineId` for that. A `503` with `q` means search is down: retry, or drop `q`.
 - **Storylines.** Prices and levels in `title` and `summary` are as of `lastMaterialAt`, not now.
 - **Call books.** Read the lean through `crowdingPercentile`, not `longShare`: the accounts lean
   long almost always. The newest row is a live tick (`live: true`), rewritten every five minutes.
@@ -1150,8 +1149,8 @@ Every `price` and `ta` condition must include an `exchange` arg that selects whi
 market data backs the condition. Allowed values: `hyperliquid`, `binance` (exact
 lowercase enum). `gmx` is no longer accepted: create and validate reject it with
 `EQL_INVALID_ARG_VALUE`. Drafts still store a `gmx` condition, and convert rejects it with
-`EQL_VALIDATION_ERROR`. This arg **only affects the data source** of the condition. A `price`/`ta`
-condition without `exchange` fails validation.
+`EQL_VALIDATION_ERROR`. This arg **only affects the data source** of the condition. A
+`price`/`ta` condition without `exchange` fails validation.
 
 Per-venue data notes:
 - `binance` reads its **USD-M perp** markets and uses Binance's own base-symbol convention
