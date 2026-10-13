@@ -349,9 +349,8 @@ Gate summary for the tier-restricted endpoints:
 On Grow, requests past the monthly credits keep working and are billed as overage, unless
 overage is turned off or a spend cap is set in the dashboard; on Free, they are rejected until
 credits reset next month. Exceeding the rate limit returns `429` (honor `Retry-After`). If a
-user hits an authorization error on a gated
-endpoint, they can move to PAYG, upgrade their plan, or use x402 instead (v2 only: API v3 needs a
-PAYG, Grow or Enterprise key). Full details at
+user hits an authorization error on a gated endpoint, they can move to PAYG, upgrade their plan,
+or use x402 instead (v2 only: API v3 needs a PAYG, Grow or Enterprise key). Full details at
 https://go.elfa.ai/claude-skills.
 
 **Making the call:**
