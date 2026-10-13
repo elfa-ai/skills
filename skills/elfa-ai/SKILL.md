@@ -519,7 +519,7 @@ mistake.
 | What happened to an asset and how the story developed | `/v3/events`, `/v3/events/storylines` (Step 2d) |
 | Who is long or short, and whose calls to trust | `/v3/calls/positioning`, `/v3/calls/episodes` (Step 2d) |
 | A market question answered in plain language | `POST /v2/chat` |
-| What is moving right now | `trending-tokens`, `trending-cas/*` |
+| What is moving right now | `trending-tokens`, `trending-cas/*`, or `/v3/market/crypto/mindshare` and `/v3/market/crypto/trending-contracts` (Step 2d) |
 | Who amplified a token or keyword | `top-mentions`, `keyword-mentions`, `smart-stats` |
 | A defensible cause or theme behind a move | `token-news`, `event-summary`, `trending-narratives` |
 | Continuous watching + notify/execute on a condition | Auto (Step 3) |
@@ -589,7 +589,7 @@ read, not necessarily cited. The flag costs nothing extra.
 | `text_complete` | incremental text finished |
 | `status` | progress update (e.g. "Searching mentions…") |
 | `credits` | `credits` — credits consumed so far |
-| `complete` | final `sessionId`, `success`, `creditsConsumed` |
+| `complete` | final `sessionId`, `success`, `creditsConsumed`, and `sources` when `includeSources: true` |
 | `invalid_request` | query rejected by safety checks |
 | `error` | stream failure |
 
@@ -620,8 +620,9 @@ accounts are worth reading — across crypto and equities. Endpoints are listed 
 [API v3 endpoints](#api-v3-endpoints). Full docs: [docs.elfa.ai/v3/overview](https://docs.elfa.ai/v3/overview).
 
 API v3 needs `ELFA_API_KEY` on a PAYG, Grow or Enterprise plan, and the Step 2a key rules apply.
-There is no x402 path. Without such a key, offer one, or fall back to v2 (`event-summary`,
-`chat`).
+There is no x402 path. Without such a key, offer one, or fall back to `event-summary` (any key,
+or x402) or `chat` via x402. To check eligibility, read `scopes` on `/v3/key-status`, not `plan`:
+a Free key reads `payg` there, with no v3 scope.
 
 **Resolve first.** Entity filters take an id, not a ticker. Resolve the asset, read its last day
 of events, then see how accounts are positioned on it. Check the resolved name: the first match
@@ -666,8 +667,8 @@ post behind them.
 
 **What agents get wrong:**
 
-- **Events.** `sort=relevant` ranks the last 24 hours and refuses `from`, `to`, ids and most
-  classification filters. `q` searches events, storylines and arcs by topic, best match first.
+- **Events.** `sort=relevant` ranks the last 24 hours and refuses `from`, `to`, `eventIds`,
+  `arcId` and most classification filters; `entityIds` (tokens and equities only) still filters. `q` searches events, storylines and arcs by topic, best match first.
   `impacts` is empty on most events; `movedFirst` or `marketWide` set to `true` means the move
   probably has another cause. `novelty=new` does not show each story once: keep one event per
   `storylineId` for that. A `503` with `q` means search is down: retry, or drop `q`.
@@ -2557,7 +2558,10 @@ When the user wants integration help, generate correct, production-ready code.
 See the [Elfa API documentation](https://docs.elfa.ai) for the full parameter specs.
 
 **Principles for code generation:**
-- Always mention both access modes (API key and x402) so developers know their options
+- For `/v2`, always mention both access modes (API key and x402) so developers know their options
+- For `/v3`, the API key is the only mode (no x402). Use `from`/`to` in unix seconds (there is no
+  `timeWindow`), page with `nextCursor` → `cursor`, and read the list at the top level of the
+  response. See Step 2d
 - Include the signup link `https://go.elfa.ai/claude-skills` as a comment near the
   API key placeholder, and link to `https://docs.elfa.ai/x402-payments` for x402
 - Always include proper error handling
@@ -2567,7 +2571,7 @@ See the [Elfa API documentation](https://docs.elfa.ai) for the full parameter sp
 - Include TypeScript types when generating TS code
 - Add comments explaining each parameter
 - For pagination endpoints, show how to paginate through results
-- For time-windowed endpoints, explain the `timeWindow` vs `from`/`to` pattern
+- For `/v2` time-windowed endpoints, explain the `timeWindow` vs `from`/`to` pattern
 
 **Language priorities** (use unless the user specifies otherwise):
 1. TypeScript/JavaScript (fetch) — most Elfa integrators are web/Node devs
@@ -2593,6 +2597,8 @@ See the [Elfa API documentation](https://docs.elfa.ai) for the full parameter sp
 - Show how to poll or stream for results after query creation
 
 ### Common patterns
+
+These patterns are for `/v2`. API v3 follows the rules in Step 2d.
 
 **Time window parameters:**
 Many endpoints accept either `timeWindow` (e.g., "30m", "1h", "4h", "24h", "7d", "30d")
@@ -2652,7 +2658,7 @@ Use `$` when you want only cashtag-specific mentions. Omit `$` for a more inclus
 - Chat: speed-based; via x402 pay `exact` (fast $1, expert $2) or `batch-settlement` (up to fast $2, expert $6)
 - API v3: free on the Pay-as-you-go and Grow plans. API key only
 - `/v2/ping`, `/v2/key-status`: free
-- Every `/v2/*` response to an authenticated request carries an **`x-elfa-credits`** header with
+- Every `/v2/*` and `/v3/*` response to an authenticated request carries an **`x-elfa-credits`** header with
   the credits that request consumed — read it instead of diffing `/v2/key-status` around a call.
   It is present on error responses raised after the key is accepted, and absent when the request
   is rejected before the key resolves, because nothing was charged. Streaming responses and
