@@ -1,6 +1,6 @@
 # Elfa AI Skills
 
-Real-time crypto social intelligence and automated condition-engine skills for AI agents. Track trending tokens, surface narratives, search mentions, run market analysis, and build automated trigger-based workflows.
+Real-time crypto social intelligence and automated condition-engine skills for AI agents. Track trending tokens, surface narratives, search mentions, read events, positions and rankings across crypto and equities, run market analysis, and build automated trigger-based workflows.
 
 Works with **Claude Code**, **OpenCode**, **Cursor**, **GitHub Copilot**, **Codex**, and any tool that supports the [Agent Skills](https://agentskills.io) standard.
 
@@ -104,7 +104,7 @@ For a bundled `.skill` package with API docs and scripts included (currently `el
 
 | Skill | Description |
 |---|---|
-| [elfa-ai](skills/elfa-ai) | Crypto social intelligence + Auto condition engine — trending tokens, mentions, narratives, AI market analysis, and automated trigger workflows |
+| [elfa-ai](skills/elfa-ai) | Crypto social intelligence + Auto condition engine — trending tokens, mentions, narratives, API v3 events, positions and rankings, AI market analysis, and automated trigger workflows |
 
 ## Spec validation
 
@@ -126,7 +126,7 @@ Set the key as an environment variable:
 export ELFA_API_KEY=your_key_here
 ```
 
-Trending narratives and AI chat require Grow+ or PAYG; streaming AI chat requires PAYG or Enterprise; market events are Enterprise only — see the link above for details.
+Trending narratives and AI chat require Grow+ or PAYG; streaming AI chat requires PAYG or Enterprise; API v3 requires PAYG, Grow or Enterprise — see the link above for details.
 
 Alternatively, use **x402 keyless payments** to pay per request with USDC on Base, Arbitrum, Polygon, Avalanche, or Solana (no signup required). See the [x402 docs](https://docs.elfa.ai/x402-payments) for setup.
 
@@ -142,6 +142,10 @@ What are the top mentions for $SOL this week?
 
 ```
 Get smart stats for @elaborateelf on Twitter
+```
+
+```
+What happened to ETH in the last day, and who is long or short it right now?
 ```
 
 ```
@@ -183,13 +187,33 @@ Notify me when 3+ of the funds I track all start following the same X account
 | `/v2/data/event-summary` | AI event summaries (5 credits) |
 | `/v2/data/trending-narratives` | Trending narrative clusters (5 credits) |
 | `/v2/data/token-news` | Token-related news — X posts from accounts tagged as news sources |
-| `/v2/data/market-events` | Impact-scored market events (Enterprise only — access-gated) |
 | `/v2/aggregations/trending-cas/twitter` | Trending contract addresses (Twitter) |
 | `/v2/aggregations/trending-cas/telegram` | Trending contract addresses (Telegram) |
 | `/v2/chat` | AI chat — market analysis, token intros, account reviews |
 | `/v2/chat/stream` | AI chat as an incremental SSE stream (PAYG / Enterprise) |
 | `/v2/key-status` | API key usage & limits (free) |
 | `/v2/ping` | Health check — no auth required (free) |
+
+### API v3 endpoints
+
+API key only. Free on the Pay-as-you-go and Grow plans, and open to Enterprise keys; a Free key can call only `/v3/key-status`. Times are unix seconds.
+
+| Endpoint | Description |
+|---|---|
+| `/v3/entities` | Resolve a ticker, name, handle, address, CoinGecko id, FIGI or CIK to the id every other v3 endpoint takes |
+| `/v3/events` | Events: what happened, what it names, how prices reacted. Searchable by topic |
+| `/v3/events/storylines` | One development followed over days |
+| `/v3/events/arcs` | Storylines grouped into a larger movement |
+| `/v3/market/crypto/mindshare`, `/v3/market/equity/mindshare` | Assets ranked by share of attention, with `hot` |
+| `/v3/market/crypto/trending-contracts` | Contract addresses ranked by how many posts pasted them |
+| `/v3/market/crypto/call-book`, `/v3/market/equity/call-book` | The whole market's long/short lean, hour by hour |
+| `/v3/calls` | Every post that takes or changes a position |
+| `/v3/calls/episodes` | Each position from open to close, with prices and the author's track record |
+| `/v3/calls/positioning` | Open longs and shorts on one asset, now |
+| `/v3/people/accounts` | Accounts ranked by standing |
+| `/v3/key-status` | Plan, credits, limits and how far back the key reads |
+
+See [API v3 docs](https://docs.elfa.ai/v3/overview).
 
 ### Auto endpoints (Condition Engine)
 
