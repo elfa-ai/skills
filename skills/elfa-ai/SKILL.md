@@ -147,7 +147,7 @@ call only `/v3/key-status`. See Step 2d for the rules they share.
 | | `/v3/calls/positioning` | Open longs and shorts on one asset, now |
 | What are accounts doing? | `/v3/calls` | Every post that takes or changes a position |
 | | `/v3/calls/episodes` | Each position from open to close, with prices and the author's track record |
-| Who is worth reading? | `/v3/people/accounts` | Accounts ranked by standing |
+| Who is worth reading? | `/v3/people/accounts` | Accounts ranked by standing, or by track record with `metric` |
 | What can my key do? | `/v3/key-status` | Plan, credits, limits and how far back it reads |
 
 #### Auto endpoints (Condition Engine)
@@ -517,7 +517,7 @@ mistake.
 | User needs | Start here |
 |---|---|
 | What happened to an asset and how the story developed | `/v3/events`, `/v3/events/storylines` (Step 2d) |
-| Who is long or short, and whose calls to trust | `/v3/calls/positioning`, `/v3/calls/episodes` (Step 2d) |
+| Who is long or short, and whose calls to trust | `/v3/calls/positioning`, `/v3/calls/episodes`, `/v3/people/accounts?metric=alphaScore` (Step 2d) |
 | A market question answered in plain language | `POST /v2/chat` |
 | What is moving right now | `trending-tokens`, `trending-cas/*`, or `/v3/market/crypto/mindshare` and `/v3/market/crypto/trending-contracts` (Step 2d) |
 | Who amplified a token or keyword | `top-mentions`, `keyword-mentions`, `smart-stats` |
@@ -682,8 +682,13 @@ post behind them.
 - **Calls.** `handle` takes X accounts only; Telegram channels cannot be filtered on yet.
   `/v3/calls/episodes?status=open&from=<now>` reads what every matching account holds right now.
   Positioning takes one `entityId`, singular.
-- **Top accounts.** Standing measures attention, not accuracy. Read `track` for how an account's
-  calls have done.
+- **Top accounts.** Standing (the default `metric`) measures attention, not accuracy. To rank
+  callers by how their calls went, pass `metric=alphaScore` (return against the market, BTC for
+  crypto and SPY for equities, and outright), `hitRate` or `avgReturn`. For "best callers" use
+  `alphaScore`: `avgReturn` is not adjusted for the market, so a few big wins or a rally can top
+  it. Track metrics rank only accounts with at least 20 scored positions, over every position
+  since late June 2026, refreshed daily. Quote the number you ranked by (`track.alphaScore` and
+  so on) with `track.scoredEpisodes`.
 
 To be alerted when a new event matches your filters instead of polling, use an Auto `events`
 condition (Step 3). Per-family docs: [Entities](https://docs.elfa.ai/v3/entities),

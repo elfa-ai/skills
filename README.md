@@ -210,7 +210,7 @@ API key only. Free on the Pay-as-you-go and Grow plans, and open to Enterprise k
 | `/v3/calls` | Every post that takes or changes a position |
 | `/v3/calls/episodes` | Each position from open to close, with prices and the author's track record |
 | `/v3/calls/positioning` | Open longs and shorts on one asset, now |
-| `/v3/people/accounts` | Accounts ranked by standing |
+| `/v3/people/accounts` | Accounts ranked by standing, or by track record (`metric=alphaScore`, `hitRate`, `avgReturn`) |
 | `/v3/key-status` | Plan, credits, limits and how far back the key reads |
 
 See [API v3 docs](https://docs.elfa.ai/v3/overview).
