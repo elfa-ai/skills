@@ -82,7 +82,7 @@ x402 wallet signing is handled client-side by `@x402/fetch` or `@x402/axios`.
 ## API Overview
 
 **Base URL:** `https://api.elfa.ai`
-**Version:** v2, plus API v3 (`/v3/`, API key only)
+**Version:** v2, plus [API v3](#api-v3-endpoints) (`/v3/`)
 **Docs:** [docs.elfa.ai](https://docs.elfa.ai)
 
 ### Two access modes
@@ -94,8 +94,7 @@ Elfa supports two independent ways to authenticate requests:
 | **API key** | `/v2/`, `/v3/` | `x-elfa-api-key: YOUR_KEY` | Humans & apps with a registered key |
 | **x402 (keyless)** | `/x402/v2/` | `PAYMENT-SIGNATURE: <signed-payload>` | Agents & wallets — no signup needed |
 
-Both modes access the same v2 data, and API v3 takes an API key only. Otherwise the only
-difference is how you authenticate:
+Both modes access the same v2 data. Otherwise the only difference is how you authenticate:
 - **API key** — register at https://go.elfa.ai/claude-skills. Start on **pay-as-you-go**: the
   free tier is being phased out, so new integrations should top up a PAYG balance rather than
   build against free credits.
@@ -236,7 +235,7 @@ When you need exact endpoint metadata, load these instead of walking the docs pa
 | Endpoint manifest | `https://docs.elfa.ai/agent/endpoints.manifest.json` | Method/path, docs route, required headers, payment requirement, request/response examples |
 | Docs map | `https://docs.elfa.ai/llms.txt` | Canonical page map + machine-readable links. A plain `GET https://docs.elfa.ai/` returns the same index as `text/plain` to any client that does not ask for HTML |
 | Full docs text | `https://docs.elfa.ai/llms-full.txt` | Only when deeper page context is needed |
-| OpenAPI spec | bundled at `references/swagger.json` | Exact schemas, params, and defaults. Ignore the per-operation cost lines on `/v3`: v3 is free on the Pay-as-you-go and Grow plans |
+| OpenAPI spec | bundled at `references/swagger.json` | Exact schemas, params, and defaults. Ignore the per-operation cost lines on `/v3`; see [API v3 endpoints](#api-v3-endpoints) for what it costs |
 | Latest skill | `https://raw.githubusercontent.com/elfa-ai/skills/main/skills/elfa-ai/SKILL.md` | Re-fetch this skill when you cannot install it |
 
 The manifest URL is **stable** — earlier releases served a rotating
@@ -350,7 +349,7 @@ On Grow, requests past the monthly credits keep working and are billed as overag
 overage is turned off or a spend cap is set in the dashboard; on Free, they are rejected until
 credits reset next month. Exceeding the rate limit returns `429` (honor `Retry-After`). If a
 user hits an authorization error on a gated endpoint, they can move to PAYG, upgrade their plan,
-or use x402 instead (v2 only: API v3 needs a PAYG, Grow or Enterprise key). Full details at
+or use x402 instead (v2 only). Full details at
 https://go.elfa.ai/claude-skills.
 
 **Making the call:**
@@ -619,9 +618,9 @@ or short an asset and whose calls to trust, which assets get the most attention,
 accounts are worth reading — across crypto and equities. Endpoints are listed in
 [API v3 endpoints](#api-v3-endpoints). Full docs: [docs.elfa.ai/v3/overview](https://docs.elfa.ai/v3/overview).
 
-API v3 needs `ELFA_API_KEY` on a PAYG, Grow or Enterprise plan, and the Step 2a key rules apply.
-There is no x402 path. Without such a key, offer one, or fall back to `event-summary` (any key,
-or x402) or `chat` via x402. To check eligibility, read `scopes` on `/v3/key-status`, not `plan`:
+API v3 needs `ELFA_API_KEY` with v3 access (see [API v3 endpoints](#api-v3-endpoints)), and the
+Step 2a key rules apply. Without one, offer one, or fall back to `event-summary` (any key, or
+x402) or `chat` via x402. To check eligibility, read `scopes` on `/v3/key-status`, not `plan`:
 a Free key reads `payg` there, with no v3 scope.
 
 **Resolve first.** Entity filters take an id, not a ticker. Resolve the asset, read its last day
@@ -2686,7 +2685,7 @@ Use `$` when you want only cashtag-specific mentions. Omit `$` for a more inclus
 - The Elfa API domain (`api.elfa.ai`) must be accessible from the network. If blocked,
   inform the user and provide the code snippet instead.
 - Use the v2 endpoints (paths starting with `/v2/` or `/x402/v2/`) and the API v3 endpoints
-  (`/v3/`, API key only).
+  (`/v3/`).
 - For experimental endpoints (trending-tokens), mention that behavior may
   change without notice. `/v2/account/smart-stats` is **legacy**: it still works, but
   **will be removed on 28 October 2026** — say so before building on it.
