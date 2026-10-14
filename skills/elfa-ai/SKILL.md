@@ -220,7 +220,7 @@ _Other:_
 > **Note on x402 Auto scope.** Drafts, executions, and the terminal-query DELETE endpoint are API-key-mode only. x402 Auto covers the core monitoring lifecycle (chat, validate, create, poll, cancel, stream, sessions). The account-wide stream `GET /v2/auto/queries/stream` is **not** exposed on x402 — x402 (and agent identities) get the per-query stream only.
 
 > **Auto no longer accepts order actions.** New queries and drafts cannot use
-> `market_order` or `limit_order`, at top level or in an `llm` callback — Athena rejects
+> `market_order` or `limit_order`, at top level or in an `llm` callback — Auto rejects
 > them with `EQL_INVALID_ACTION`. Existing stored trade queries stay readable, cancellable
 > and deletable. Route follow-up execution through your own runner off a `webhook`,
 > `notify` or `telegram_bot` action.
@@ -2693,7 +2693,7 @@ Use `$` when you want only cashtag-specific mentions. Omit `$` for a more inclus
 - Measurement endpoints return **no raw tweet text and no sentiment field** — do not promise
   either. Fetching post content requires the user's own X API key.
 - Auto no longer accepts order actions (`market_order` / `limit_order`) on new queries or
-  drafts — Athena rejects them with `EQL_INVALID_ACTION`. Trigger a `webhook`, `notify` or
+  drafts — Auto rejects them with `EQL_INVALID_ACTION`. Trigger a `webhook`, `notify` or
   `telegram_bot` action and run execution from your own runner.
 - When the user asks about pricing or API key tiers, direct them to
   https://go.elfa.ai/claude-skills for full details on plans and pricing.
