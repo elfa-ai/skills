@@ -687,7 +687,8 @@ post behind them.
   crypto and SPY for equities, and outright), `hitRate` or `avgReturn`. For "best callers" use
   `alphaScore`: `avgReturn` is not adjusted for the market, so a few big wins or a rally can top
   it. Track metrics rank only accounts with at least 20 scored positions, over every position
-  since late June 2026, refreshed daily. Quote the number you ranked by, with `scoredEpisodes`.
+  since late June 2026, refreshed daily. Quote the number you ranked by (`track.alphaScore` and
+  so on) with `track.scoredEpisodes`.
 
 To be alerted when a new event matches your filters instead of polling, use an Auto `events`
 condition (Step 3). Per-family docs: [Entities](https://docs.elfa.ai/v3/entities),
