@@ -1243,7 +1243,7 @@ In the Builder Chat catalog this is the `Signal` category, **X/Twitter Post**.
 
 Rules:
 - `username` must be passed **without** `@` (e.g. `cz_binance`, not `@cz_binance`).
-- `username` must resolve to an active monitored account at create-time, otherwise validation/create fails.
+- `username` can be any public X account. Validate's `tweetAccounts` says how each is billed: `included` (Elfa's real-time set) costs nothing extra; `per_post` costs `creditsPerPost` for every post while the plan runs (posts, quotes, notes and articles; not replies or reposts), matched or not, and is not in `estimatedCredits`. Tell the user before Create. A key without a paid API plan, and x402, can watch only `included` accounts; a rejected account is an `errors[]` entry (see [Validation Errors](#validation-errors--next-action-table)). Builder Chat drafts `tweet` conditions only for `included` accounts: write any other yourself. Details: [X Accounts and Per-Post Billing](https://docs.elfa.ai/auto/signal#x-accounts-and-per-post-billing).
 - `minConfidence` must be a JSON integer between `0` and `100`; use `80` when the user gives no threshold.
 - `method`, `operator`, and `value` are auto-filled defaults (`semantic`, `==`, `true`) — do **not** include them in the condition JSON.
 
@@ -1340,7 +1340,6 @@ Triggers on events: news about an asset, project, company, person, or macro — 
 Additional constraints:
 - Keep `text` atomic — one event/theme per condition.
 - For `tweet`, do not restate account identity in `text` — `username` already scopes that.
-- `tweet` can watch any public X account. Validate's `tweetAccounts` says how each is billed: `included` (Elfa's real-time set) costs nothing extra; `per_post` costs `creditsPerPost` for every post while the plan runs (posts, quotes, notes and articles; not replies or reposts), matched or not, and is not in `estimatedCredits`. Tell the user before Create. A Free key or x402 can watch only `included` accounts. Details: [X Accounts and Per-Post Billing](https://docs.elfa.ai/auto/signal#x-accounts-and-per-post-billing).
 - For `telegram`, do not restate channel identity in `text` — `chatUsername` or `chatId` already scopes that.
 - Split `A or B` intents into multiple Signal conditions joined by `OR`; split `A and B` into multiple conditions joined by `AND`.
 - Prefer separate queries for event-driven intents (`tweet`/`telegram`/`events`) and recurring schedule intents (`cron.every`) for clearer runtime semantics.
@@ -1955,9 +1954,9 @@ guess.
 
 `GET /v2/auto/queries/{queryId}` (and the x402 `POST` equivalent) returns `queryId`, `status`,
 an optional `credits`, `latestEvaluation` (current state), and `executions` (what actually
-fired). A query that ended as `failed` also carries `failure` (`code`, `message`, `source`);
-`source: "billing"` means a per-post X account charge was refused, so top up or raise the
-limit, then create the plan again.
+fired). A query that failed with a recorded reason also carries `failure` (`code`, `message`,
+which may be `null`, and `source`); `source: "billing"` means a per-post X account charge was
+refused, so top up, upgrade or raise the limit, then create the plan again.
 
 **Distinguish the two runtime surfaces — this is the most common polling mistake:**
 
@@ -2434,12 +2433,12 @@ issue, not a capability gap. Iterate on Validate instead of abandoning the query
 | Unsupported `symbol` / source | Asset not indexed or DEX pair unsupported | Skip symbol and report it; proceed with supported subset |
 | Depth / leaf-count exceeded | More than depth 3 or 10 leaves | Split into two queries joined by your runner |
 | `cron` / `llm` period too short | Below 1h minimum | Raise to `1h` or higher |
-| `tweet` username, `details.reason: paid_plan_required` | Free key, and the account isn't in Elfa's real-time set (a misspelled handle on a Free key lands here too) | Check the spelling; use a paid API key, or pick an `included` account |
+| `tweet` username, `details.reason: paid_plan_required` | The key has no paid API plan, and the account isn't in Elfa's real-time set (a misspelled handle lands here too on such a key) | Check the spelling; use a paid API key, or pick an `included` account |
 | `tweet` username, `details.reason: not_found` | No X account has that handle, or the value isn't a handle | Check the spelling and pass the bare handle (no `@`) |
 | `tweet` username, `details.reason: protected` | The account is protected | Pick a public account |
 | `tweet` username, `details.reason: capacity_reached` | The per-post account pool is full | Retry later, or pick an `included` account |
 | `tweet` username on x402, `EQL_INVALID_ARG_TYPE` | x402 watches only accounts in the real-time set | Pick another account, or use a paid API key |
-| `503`, `ACCOUNT_LOOKUP_UNAVAILABLE` | The X account lookup failed; the account may well exist | Retry after a few seconds |
+| `503` `ERR_SERVICE_UNAVAILABLE`, `error.message: ACCOUNT_LOOKUP_UNAVAILABLE` | The X account lookup failed; the account may well exist | Retry after a few seconds |
 | Invalid `minConfidence` (`tweet` / `telegram` / `events`) | Non-integer or outside `0..100` | Use a JSON integer between `0` and `100` (start with `80`) |
 | `events` unknown / ambiguous `entity` | No entity matches, or several match equally (`details.candidates`) | Set `entityType`, pass a candidate's `publishedId` as `entity`, or drop `entity` and use `eventType` + `text` |
 | `events` with no filter and no `text`, or `text`/`minConfidence`/`entityType` unpaired | At least one filter or `text`; `text` and `minConfidence` together; `entityType` only with `entity` | Add a filter, or pair the args |
