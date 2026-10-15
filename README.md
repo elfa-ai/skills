@@ -128,7 +128,7 @@ export ELFA_API_KEY=your_key_here
 
 Trending narratives and AI chat require Grow+ or PAYG; streaming AI chat requires PAYG or Enterprise; API v3 requires PAYG, Grow or Enterprise — see the link above for details.
 
-Alternatively, use **x402 keyless payments** to pay per request with USDC on Base, Arbitrum, Polygon, Avalanche, or Solana (no signup required). See the [x402 docs](https://docs.elfa.ai/x402-payments) for setup.
+Alternatively, use **x402 keyless payments** to pay per request with USDC on Base, Arbitrum, Polygon, Avalanche, or Solana (no signup required). See the [x402 docs](https://docs.elfa.ai/get-started/x402) for setup.
 
 ## Example prompts
 
@@ -196,7 +196,7 @@ Notify me when 3+ of the funds I track all start following the same X account
 
 ### API v3 endpoints
 
-API key only. Free on the Pay-as-you-go and Grow plans, and open to Enterprise keys; a Free key can call only `/v3/key-status`. Times are unix seconds.
+API key only. Free on the Pay-as-you-go and Grow plans until 31 October 2026, and open to Enterprise keys; a Free key can call only `/v3/key-status`. Times are unix seconds.
 
 | Endpoint | Description |
 |---|---|
@@ -213,7 +213,7 @@ API key only. Free on the Pay-as-you-go and Grow plans, and open to Enterprise k
 | `/v3/people/accounts` | Accounts ranked by standing, or by track record (`metric=alphaScore`, `hitRate`, `avgReturn`) |
 | `/v3/key-status` | Plan, credits, limits and how far back the key reads |
 
-See [API v3 docs](https://docs.elfa.ai/v3/overview).
+See [API v3 docs](https://docs.elfa.ai/api/v3/overview).
 
 ### Auto endpoints (Condition Engine)
 
