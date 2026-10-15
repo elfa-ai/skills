@@ -176,6 +176,14 @@ Help me build a multi-condition trigger for BTC + ETH breakout confirmation
 Notify me when 3+ of the funds I track all start following the same X account
 ```
 
+```
+Ping me every time @3PeaksTrading opens a long
+```
+
+```
+Alert me when SOL turns hot on 4h mindshare
+```
+
 ## API endpoints
 
 | Endpoint | Description |
