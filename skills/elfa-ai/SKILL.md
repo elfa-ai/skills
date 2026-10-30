@@ -61,7 +61,7 @@ x402 wallet signing is handled client-side by `@x402/fetch` or `@x402/axios`.
 
 - User asks about **trending tokens, narratives, or contract addresses** in crypto
 - User wants **social mentions** for a specific ticker or keyword
-- User wants **smart stats** (smart followers, engagement) for a Twitter/X account
+- User wants an X account's **standing or track record** as a caller
 - User wants an **AI-generated market summary, macro overview, or token analysis** — including
   **streaming** chat output
 - User wants to know **what happened** in crypto or equity markets and how prices reacted,
@@ -98,8 +98,8 @@ Elfa supports two independent ways to authenticate requests:
 Both modes access the same v2 data. Otherwise the only difference is how you authenticate:
 - **API key** — register at https://go.elfa.ai/claude-skills. A Free key gets 1,000 credits in
   total, not per month; for ongoing use, top up a **pay-as-you-go** balance.
-- **x402** — pay per request with USDC on Base, Arbitrum, Polygon, Avalanche, BNB Smart Chain or Solana, or USDT on BNB Smart Chain. No
-  registration, no API key. Currently in beta.
+- **x402** — pay per request with USDC on Base, Arbitrum, Polygon, Avalanche, BNB Smart Chain
+  or Solana, or USDT on BNB Smart Chain. No registration, no API key. Currently in beta.
 
 ### Endpoints at a glance
 
@@ -117,7 +117,7 @@ except `key-status` which is API key mode only.
 | `/v2/data/top-mentions` | GET | Top mentions for a ticker symbol | 1 |
 | `/v2/data/keyword-mentions` | GET | Search mentions by keywords or account | 1 |
 | `/v2/data/event-summary` | GET | AI event summaries from keyword mentions | 5 |
-| `/v2/data/trending-narratives` | GET | Trending narrative clusters (Grow+ / PAYG) | 5 |
+| `/v2/data/trending-narratives` | GET | Trending narrative clusters | 5 |
 | `/v2/data/token-news` | GET | Token-related news mentions (tweet source only) | 1 |
 | `/v2/aggregations/trending-cas/twitter` | GET | Trending contract addresses (Twitter) | 1 |
 | `/v2/aggregations/trending-cas/telegram` | GET | Trending contract addresses (Telegram) | 1 |
@@ -292,8 +292,8 @@ Use the `bash_tool` to call the Elfa API via curl.
    > per month.
    >
    > **Option B — x402 keyless payments:** Pay per request with USDC on Base,
-   > Arbitrum, Polygon, Avalanche, BNB Smart Chain or Solana, or USDT on BNB Smart Chain — no signup needed. See the
-   > [x402 docs](https://docs.elfa.ai/get-started/x402) for setup.
+   > Arbitrum, Polygon, Avalanche, BNB Smart Chain or Solana, or USDT on BNB Smart Chain —
+   > no signup needed. See the [x402 docs](https://docs.elfa.ai/get-started/x402) for setup.
 
    Do not attempt any authenticated API calls without a key or x402 setup. Wait for the user.
 3. **Credential safety:**
@@ -340,7 +340,6 @@ Gate summary for the tier-restricted endpoints:
 
 | Endpoint | Requires |
 |---|---|
-| `/v2/data/trending-narratives` | Grow+ or PAYG |
 | `/v2/chat` | Grow+ or PAYG |
 | `/v2/chat/stream` | Grow+ or PAYG |
 
@@ -363,12 +362,14 @@ curl -s -H "x-elfa-api-key: $ELFA_API_KEY" "https://api.elfa.ai/v2/aggregations/
 ### Step 2b: Making live API calls (x402 keyless mode)
 
 x402 lets any wallet pay per request using USDC on Base, Arbitrum, Polygon, Avalanche,
-BNB Smart Chain or Solana, or USDT on BNB Smart Chain — no API key, no registration. This is ideal for agents, bots, and programmatic access.
+BNB Smart Chain or Solana, or USDT on BNB Smart Chain — no API key, no registration. This is
+ideal for agents, bots, and programmatic access.
 
 **How x402 works:**
 1. Send a request to the `/x402/v2/` version of any endpoint (no auth header).
 2. The server responds with HTTP **402** containing payment requirements.
-3. Your wallet signs a USDC transfer authorization (no gas fees).
+3. Your wallet signs a payment authorization (no gas; on BNB Smart Chain, a one-time Permit2
+   approval first).
 4. Resend the request with the signed payment in the `PAYMENT-SIGNATURE` header.
 5. Server verifies payment, serves the response, and settles on-chain.
 
@@ -376,7 +377,7 @@ BNB Smart Chain or Solana, or USDT on BNB Smart Chain — no API key, no registr
 - Signing happens **entirely client-side** using the `@x402/fetch` or `@x402/axios`
   libraries. The agent never handles, stores, or transmits private keys.
 - The user's wallet private key is used only locally by the x402 library to sign
-  EIP-712 typed data authorizing a specific USDC amount for a specific request.
+  EIP-712 typed data authorizing a specific token amount for a specific request.
 - Never ask the user to share their wallet private key or seed phrase in the conversation.
 - When generating x402 code examples, use `"0xYOUR_PRIVATE_KEY"` as a placeholder and
   advise the user to load it from an environment variable (e.g., `process.env.PRIVATE_KEY`).
@@ -511,7 +512,7 @@ mistake.
 
 | Tier | Endpoints | What comes back |
 |---|---|---|
-| **Measurement** | `smart-stats` (legacy), `trending-cas/*`, `trending-tokens`, `top-mentions`, `keyword-mentions`, `token-news` | Counts, engagement metrics, links, account metadata. **Your system interprets them.** |
+| **Measurement** | `trending-cas/*`, `trending-tokens`, `top-mentions`, `keyword-mentions`, `token-news` | Counts, engagement metrics, links, account metadata. **Your system interprets them.** |
 | **Interpretation** | `chat`, `chat/stream`, `event-summary`, `trending-narratives` | Written analysis or summaries, with source links where available. |
 
 > **Measurement endpoints return no raw tweet text and no sentiment field.** They measure
@@ -527,7 +528,7 @@ mistake.
 | Who is long or short, and whose calls to trust | `/v3/calls/positioning`, `/v3/calls/episodes`, `/v3/people/accounts?metric=alphaScore` (Step 2d) |
 | A market question answered in plain language | `POST /v2/chat` |
 | What is moving right now | `trending-tokens`, `trending-cas/*`, or `/v3/market/crypto/mindshare` and `/v3/market/crypto/trending-contracts` (Step 2d) |
-| Who amplified a token or keyword | `top-mentions`, `keyword-mentions`, `smart-stats` |
+| Who amplified a token or keyword | `top-mentions`, `keyword-mentions` |
 | A defensible cause or theme behind a move | `token-news`, `event-summary`, `trending-narratives` |
 | Continuous watching + notify/execute on a condition | Auto (Step 3) |
 
@@ -538,15 +539,11 @@ Single calls answer questions; chains produce signals. These are the documented 
 | Play | Chain | Why it works |
 |---|---|---|
 | **Lead time** | `trending-cas/telegram` → `trending-cas/twitter` | Telegram tends to lead; Twitter confirms. A CA in the first and not yet the second is early. |
-| **Trust-weighted mentions** | `keyword-mentions` → `smart-stats` | `keyword-mentions` yields `account.username`; `smart-stats` says whether that account has real reach. |
+| **Trust-weighted mentions** | `keyword-mentions` → `/v3/calls/episodes` | `keyword-mentions` yields `account.username`; pass it as `handle` (with `from=<now - 90d>`, `limit=1`) and rank on the episode's `track.alphaScore`, `hitRate` or `avgReturn`, weighed against `track.scoredEpisodes`. |
 | **Move + amplification** | `trending-tokens` → `top-mentions` | Find what moved, then see who drove it. |
 | **Theme → instrument** | `trending-narratives` → `trending-tokens` | Turn a narrative into specific tickers to watch. |
 | **Move + cause** | `token-news` → `event-summary` | Attach a written cause to a price/attention move. |
 | **Question + evidence** | `chat` → targeted data endpoint | Chat gives the conclusion; the data endpoint gives numbers to verify it. |
-
-When ranking accounts from `smart-stats`, use **ratios** (smart followers ÷ followers, average
-reach ÷ followers), not absolute counts — the endpoint returns raw metrics, not a reputation
-score.
 
 > **`smart-stats` is deprecated and not maintained.** Build on `keyword-mentions`, which
 > returns `account.username` alongside each mention's engagement metrics, and rank accounts
@@ -2766,7 +2763,7 @@ See the [Elfa API documentation](https://docs.elfa.ai) for the full parameter sp
   `analysisType: "chat"`)
 - Three speed modes: `fast`, `expert` (default), and `adaptive` (`/v2/chat` only)
 - Two transports: `POST /v2/chat` (JSON) and `POST /v2/chat/stream` (SSE) —
-  same body, different plan gate. See [Step 2c](#chat--json-vs-streaming) for the SSE event
+  same body, same plan gate. See [Step 2c](#chat--json-vs-streaming) for the SSE event
   types.
 
 **Auto code generation guidance:**
@@ -2810,7 +2807,8 @@ unix timestamps, which take priority over `timeWindow`.
   `accountName` (or both); `accountName` filters mentions by a specific account (e.g.
   `accountName=elonmusk`). `searchType` accepts **`and`** (all terms must be present) or
   **`or`** (any term matches). Cursor-paginated — pass `metadata.cursor` from the previous
-  response as `cursor`. Returns `account.username`, which feeds directly into `smart-stats`.
+  response as `cursor`. Returns `account.username`, which you can pass as `handle` to `/v3/calls` and
+  `/v3/calls/episodes`.
 - **`event-summary`** — `keywords` is **required**; `searchType` defaults to `or`. A `503`
   means the upstream model declined to process the matched posts — retryable, and **not** an
   empty result. The 4 fixed credits are not charged; the 1 base per-request credit still is.

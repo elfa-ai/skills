@@ -126,7 +126,7 @@ Set the key as an environment variable:
 export ELFA_API_KEY=your_key_here
 ```
 
-Trending narratives, AI chat and streaming AI chat require PAYG, Grow or Enterprise; API v3 is open to every plan — see the link above for details.
+AI chat and streaming AI chat require PAYG, Grow or Enterprise; trending narratives and API v3 are open to every plan — see the link above for details.
 
 Alternatively, use **x402 keyless payments** to pay per request with USDC on Base, Arbitrum, Polygon, Avalanche, BNB Smart Chain or Solana, or USDT on BNB Smart Chain (no signup required). See the [x402 docs](https://docs.elfa.ai/get-started/x402) for setup.
 
@@ -141,7 +141,7 @@ What are the top mentions for $SOL this week?
 ```
 
 ```
-Get smart stats for @elaborateelf on Twitter
+Which accounts have the best track record calling SOL?
 ```
 
 ```
@@ -204,7 +204,7 @@ Alert me when SOL turns hot on 4h mindshare
 
 ### API v3 endpoints
 
-API key only, on every plan. Each call costs credits, priced per endpoint on the [pricing page](https://docs.elfa.ai/get-started/pricing#api-v3). Times are unix seconds.
+API key only, on every plan. Each call but `/v3/key-status` costs credits on Free, PAYG and Grow, priced per endpoint on the [pricing page](https://docs.elfa.ai/get-started/pricing#api-v3). Times are unix seconds.
 
 | Endpoint | Description |
 |---|---|
