@@ -3,7 +3,7 @@ name: elfa-ai
 description: >
   Use this skill for Elfa API crypto social intelligence and Auto condition-engine workflows:
   API v3 events, positions and rankings (crypto, equities), trending tokens, narratives,
-  mentions, smart account stats, token news, trending contract addresses, AI market chat
+  mentions, token news, trending contract addresses, AI market chat
   (JSON and SSE streaming), curl/code snippets, automated alerts,
   EQL queries, trigger pipelines, and agent workflows that react to market conditions.
   Auto can trigger on X/Twitter posts, Telegram channels, events (news), one trader's
@@ -12,8 +12,8 @@ description: >
   moves (new followers, new follows, accounts converging), re-fire
   recurring plans via `repeat`, run calendar schedules via
   `cron.schedule`, and monitor crypto plus HIP-3 assets (equities, indices, commodities, FX,
-  pre-IPO — 24/7). Supports API keys and x402 pay-per-request USDC or USDT on Base,
-  Arbitrum, Polygon, Avalanche, BNB Smart Chain, or Solana.
+  pre-IPO — 24/7). Supports API keys and x402 pay-per-request in USDC on Base,
+  Arbitrum, Polygon, Avalanche, BNB Smart Chain or Solana, or USDT on BNB Smart Chain.
 ---
 
 # Elfa API Skill
@@ -98,7 +98,7 @@ Elfa supports two independent ways to authenticate requests:
 Both modes access the same v2 data. Otherwise the only difference is how you authenticate:
 - **API key** — register at https://go.elfa.ai/claude-skills. A Free key gets 1,000 credits in
   total, not per month; for ongoing use, top up a **pay-as-you-go** balance.
-- **x402** — pay per request with USDC or USDT on Base, Arbitrum, Polygon, Avalanche, BNB Smart Chain, or Solana. No
+- **x402** — pay per request with USDC on Base, Arbitrum, Polygon, Avalanche, BNB Smart Chain or Solana, or USDT on BNB Smart Chain. No
   registration, no API key. Currently in beta.
 
 ### Endpoints at a glance
@@ -113,7 +113,7 @@ except `key-status` which is API key mode only.
 | `/v2/ping` | GET | Health check — **no auth required** (API key mode only) | Free |
 | `/v2/key-status` | GET | API key usage & limits (API key only) | Free |
 | `/v2/aggregations/trending-tokens` | GET | Trending tokens by mention count | 1 |
-| `/v2/account/smart-stats` | GET | Smart follower & engagement stats — **legacy, will be removed 28 Oct 2026** | 1 |
+| `/v2/account/smart-stats` | GET | Smart follower & engagement stats — **deprecated, not maintained** | 1 |
 | `/v2/data/top-mentions` | GET | Top mentions for a ticker symbol | 1 |
 | `/v2/data/keyword-mentions` | GET | Search mentions by keywords or account | 1 |
 | `/v2/data/event-summary` | GET | AI event summaries from keyword mentions | 5 |
@@ -131,7 +131,7 @@ except `key-status` which is API key mode only.
 
 API v3 turns news and market chatter across crypto and equities into events, positions and
 rankings. Every endpoint is `GET` and authenticates with `x-elfa-api-key` (no x402). Every plan,
-Free included, can call every v3 endpoint. From 1 November 2026, 00:00 UTC, each call but
+Free included, can call every v3 endpoint. Each call but
 `/v3/key-status` costs credits on Free, PAYG and Grow, priced per endpoint
 ([pricing](https://docs.elfa.ai/get-started/pricing#api-v3)); Enterprise keys are not drawn down
 per call. See Step 2d for the rules they share.
@@ -291,8 +291,8 @@ Use the `bash_tool` to call the Elfa API via curl.
    > (do not paste it directly into the chat). A Free key gets 1,000 credits in total, not
    > per month.
    >
-   > **Option B — x402 keyless payments:** Pay per request with USDC or USDT on Base,
-   > Arbitrum, Polygon, Avalanche, BNB Smart Chain, or Solana — no signup needed. See the
+   > **Option B — x402 keyless payments:** Pay per request with USDC on Base,
+   > Arbitrum, Polygon, Avalanche, BNB Smart Chain or Solana, or USDT on BNB Smart Chain — no signup needed. See the
    > [x402 docs](https://docs.elfa.ai/get-started/x402) for setup.
 
    Do not attempt any authenticated API calls without a key or x402 setup. Wait for the user.
@@ -311,9 +311,6 @@ prepaid credit balance ($20 minimum top-up, card or USDC); **x402** is $0.0145/c
 1,000 RPM with no account. Same per-credit price — pick on integration style. A Free key gets
 1,000 credits in total, not per month, at 60 RPM; what is left becomes bonus credits on upgrade.
 
-Accounts already on PAYG keep $0.009 per credit until 28 September 2026, 16:00 UTC
-(29 September, 00:00 SGT). x402 has no accounts, so its price applies to every payer at once.
-
 Subscription plans:
 
 | | PAYG | Grow | Enterprise |
@@ -330,9 +327,9 @@ Grow subscriptions started before October 2026 keep their existing price ($290/m
 billed annually), 40,000 credits per month, and $0.009 per overage credit.
 
 **What each tier unlocks:**
-- **PAYG** — core social data (trending tokens, smart stats, top mentions, keyword mentions,
-  event summaries, token news, trending contract addresses on Twitter and Telegram), plus token
-  mindshare, sentiment-weighted mentions, **trending narratives**, **Elfa Intelligence** (Agent
+- **PAYG** — core social data (trending tokens, top mentions, keyword mentions, event
+  summaries, token news, trending contract addresses on Twitter and Telegram), plus API v3
+  (events, calls, market data including token mindshare, and people), **trending narratives**, **Elfa Intelligence** (Agent
   Chat and Agent Automation), and **streaming AI Chat** (Ask Elfa, `POST /v2/chat/stream`)
 - **Grow** — everything in PAYG, with 120,000 credits a month, $0.009 per overage credit, and
   120 RPM
@@ -365,9 +362,8 @@ curl -s -H "x-elfa-api-key: $ELFA_API_KEY" "https://api.elfa.ai/v2/aggregations/
 
 ### Step 2b: Making live API calls (x402 keyless mode)
 
-x402 lets any wallet pay per request using USDC or USDT on Base, Arbitrum, Polygon, Avalanche,
-BNB Smart Chain, or
-Solana — no API key, no registration. This is ideal for agents, bots, and programmatic access.
+x402 lets any wallet pay per request using USDC on Base, Arbitrum, Polygon, Avalanche,
+BNB Smart Chain or Solana, or USDT on BNB Smart Chain — no API key, no registration. This is ideal for agents, bots, and programmatic access.
 
 **How x402 works:**
 1. Send a request to the `/x402/v2/` version of any endpoint (no auth header).
@@ -552,10 +548,9 @@ When ranking accounts from `smart-stats`, use **ratios** (smart followers ÷ fol
 reach ÷ followers), not absolute counts — the endpoint returns raw metrics, not a reputation
 score.
 
-> **`smart-stats` is legacy and will be removed on 28 October 2026.** It still works until
-> then, and is not being extended before then. Chains that end in it keep working today, but
-> build new integrations on `keyword-mentions`, which returns `account.username` alongside
-> each mention's engagement metrics.
+> **`smart-stats` is deprecated and not maintained.** Build on `keyword-mentions`, which
+> returns `account.username` alongside each mention's engagement metrics, and rank accounts
+> with `/v3/people/accounts`.
 
 #### Chat — JSON vs streaming
 
@@ -680,7 +675,7 @@ curl -s "https://api.elfa.ai/v3/calls/positioning?entityId=$ID" \
 | Errors | A bad or unknown parameter is a `400` naming the field in `details`, and an unknown id in a filter is a `400`, `Unknown id: …`. Unknown ids in an `*Ids` fetch are skipped. Nothing matching is a `200` with an empty list |
 | Responses | The list is top-level and named for what it holds (`events`, `entities`, `bars`, …), with no `data` wrapper |
 | Rate limits | Per key, shared with `/v2`. `429 ERR_RATE_LIMIT_EXCEEDED`: wait `RateLimit-Reset` seconds. `429 ERR_RATE_LIMITED`: out of credits, retrying does not help |
-| Credits | From 1 November 2026, priced per endpoint, see [pricing](https://docs.elfa.ai/get-started/pricing#api-v3). A PAYG balance that does not cover a call is `402 ERR_INSUFFICIENT_CREDITS`. Errors cost nothing. `x-elfa-credits` gives a call's cost and, on a `200`, `x-elfa-credits-detail` how it adds up |
+| Credits | Priced per endpoint, see [pricing](https://docs.elfa.ai/get-started/pricing#api-v3). A PAYG balance that does not cover a call is `402 ERR_INSUFFICIENT_CREDITS`. Errors cost nothing. `x-elfa-credits` gives a call's cost and, on a `200`, `x-elfa-credits-detail` how it adds up |
 
 No v3 endpoint returns post text. Events carry a written title and summary, and link to each
 post behind them.
@@ -828,7 +823,7 @@ existing queries/sessions may become inaccessible.
 
 > Reference USD values for Create: baseline `$0.0725`, fast call `+$0.0725`, expert call `+$0.261`. Use `/queries/validate` to preview exact cost before committing.
 
-**x402 mode (`/x402/v2/auto/*`) — pay-per-request in USDC or USDT on Base, Arbitrum, Polygon, Avalanche, BNB Smart Chain, or Solana:**
+**x402 mode (`/x402/v2/auto/*`) — pay-per-request in USDC on Base, Arbitrum, Polygon, Avalanche, BNB Smart Chain or Solana, or USDT on BNB Smart Chain:**
 
 Builder Chat is speed-based with two schemes — a flat `exact` price, or, on Base when the 402
 lists it, a prepaid `batch-settlement` channel charged only what the turn used, up to the cap:
@@ -2841,7 +2836,7 @@ Use `$` when you want only cashtag-specific mentions. Omit `$` for a more inclus
 - Event summary: 5 credits ($0.0725 via x402)
 - Trending narratives: 5 credits ($0.0725 via x402)
 - Chat: speed-based; via x402 pay `exact` (fast $1, expert $2) or `batch-settlement` (up to fast $2, expert $6)
-- API v3: every plan; from 1 November 2026 priced per endpoint on Free, PAYG and Grow
+- API v3: every plan; priced per endpoint on Free, PAYG and Grow
   (https://docs.elfa.ai/get-started/pricing#api-v3). API key only
 - `/v2/ping`, `/v2/key-status`: free
 - Every `/v2/*` and `/v3/*` response to an authenticated request carries an **`x-elfa-credits`** header with
@@ -2867,8 +2862,8 @@ Use `$` when you want only cashtag-specific mentions. Omit `$` for a more inclus
 - Use the v2 endpoints (paths starting with `/v2/` or `/x402/v2/`) and the API v3 endpoints
   (`/v3/`).
 - For experimental endpoints (trending-tokens), mention that behavior may
-  change without notice. `/v2/account/smart-stats` is **legacy**: it still works, but
-  **will be removed on 28 October 2026** — say so before building on it.
+  change without notice. `/v2/account/smart-stats` is **deprecated and not maintained** — say so
+  before building on it, and rank accounts with `/v3/people/accounts`.
   `/v2/data/market-events` is no longer part of the public API: market events are served by
   API v3 Events (`/v3/events`).
 - `/v2/data/event-summary` can return `503` (`ERR_SERVICE_UNAVAILABLE`, 1 credit instead of 5)

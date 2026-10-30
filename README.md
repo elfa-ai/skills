@@ -128,7 +128,7 @@ export ELFA_API_KEY=your_key_here
 
 Trending narratives, AI chat and streaming AI chat require PAYG, Grow or Enterprise; API v3 is open to every plan — see the link above for details.
 
-Alternatively, use **x402 keyless payments** to pay per request with USDC or USDT on Base, Arbitrum, Polygon, Avalanche, BNB Smart Chain, or Solana (no signup required). See the [x402 docs](https://docs.elfa.ai/get-started/x402) for setup.
+Alternatively, use **x402 keyless payments** to pay per request with USDC on Base, Arbitrum, Polygon, Avalanche, BNB Smart Chain or Solana, or USDT on BNB Smart Chain (no signup required). See the [x402 docs](https://docs.elfa.ai/get-started/x402) for setup.
 
 ## Example prompts
 
@@ -189,7 +189,7 @@ Alert me when SOL turns hot on 4h mindshare
 | Endpoint | Description |
 |---|---|
 | `/v2/aggregations/trending-tokens` | Trending tokens by mention count |
-| `/v2/account/smart-stats` | Smart follower & engagement stats (legacy — will be removed 28 Oct 2026) |
+| `/v2/account/smart-stats` | Smart follower & engagement stats (deprecated, not maintained) |
 | `/v2/data/top-mentions` | Top mentions for a ticker symbol |
 | `/v2/data/keyword-mentions` | Search mentions by keyword |
 | `/v2/data/event-summary` | AI event summaries (5 credits) |
@@ -204,7 +204,7 @@ Alert me when SOL turns hot on 4h mindshare
 
 ### API v3 endpoints
 
-API key only, on every plan. From 1 November 2026 each call costs credits, priced per endpoint on the [pricing page](https://docs.elfa.ai/get-started/pricing#api-v3). Times are unix seconds.
+API key only, on every plan. Each call costs credits, priced per endpoint on the [pricing page](https://docs.elfa.ai/get-started/pricing#api-v3). Times are unix seconds.
 
 | Endpoint | Description |
 |---|---|
