@@ -118,7 +118,7 @@ uvx --from skills-ref agentskills validate ./skills/elfa-ai
 
 ## Get an API key
 
-Register at **https://go.elfa.ai/claude-skills** and start on **pay-as-you-go** — $0.0145 per credit, $20 minimum top-up, card or USDC. The free tier is being phased out, so new integrations should start on PAYG.
+Register at **https://go.elfa.ai/claude-skills** and top up a **pay-as-you-go** balance — $0.0145 per credit, $20 minimum top-up, card or USDC. A Free key gets 1,000 credits in total, not per month.
 
 Set the key as an environment variable:
 
@@ -126,9 +126,9 @@ Set the key as an environment variable:
 export ELFA_API_KEY=your_key_here
 ```
 
-Trending narratives and AI chat require Grow+ or PAYG; streaming AI chat requires PAYG or Enterprise; API v3 requires PAYG, Grow or Enterprise — see the link above for details.
+AI chat and streaming AI chat require PAYG, Grow or Enterprise; trending narratives and API v3 are open to every plan — see the link above for details.
 
-Alternatively, use **x402 keyless payments** to pay per request with USDC on Base, Arbitrum, Polygon, Avalanche, or Solana (no signup required). See the [x402 docs](https://docs.elfa.ai/get-started/x402) for setup.
+Alternatively, use **x402 keyless payments** to pay per request with USDC on Base, Arbitrum, Polygon, Avalanche, BNB Smart Chain or Solana, or USDT on BNB Smart Chain (no signup required). See the [x402 docs](https://docs.elfa.ai/get-started/x402) for setup.
 
 ## Example prompts
 
@@ -141,7 +141,7 @@ What are the top mentions for $SOL this week?
 ```
 
 ```
-Get smart stats for @elaborateelf on Twitter
+Which accounts have the best track record calling SOL?
 ```
 
 ```
@@ -189,7 +189,7 @@ Alert me when SOL turns hot on 4h mindshare
 | Endpoint | Description |
 |---|---|
 | `/v2/aggregations/trending-tokens` | Trending tokens by mention count |
-| `/v2/account/smart-stats` | Smart follower & engagement stats (legacy — will be removed 28 Oct 2026) |
+| `/v2/account/smart-stats` | Smart follower & engagement stats (deprecated, not maintained) |
 | `/v2/data/top-mentions` | Top mentions for a ticker symbol |
 | `/v2/data/keyword-mentions` | Search mentions by keyword |
 | `/v2/data/event-summary` | AI event summaries (5 credits) |
@@ -198,13 +198,13 @@ Alert me when SOL turns hot on 4h mindshare
 | `/v2/aggregations/trending-cas/twitter` | Trending contract addresses (Twitter) |
 | `/v2/aggregations/trending-cas/telegram` | Trending contract addresses (Telegram) |
 | `/v2/chat` | AI chat — market analysis, token intros, account reviews |
-| `/v2/chat/stream` | AI chat as an incremental SSE stream (PAYG / Enterprise) |
+| `/v2/chat/stream` | AI chat as an incremental SSE stream (PAYG, Grow or Enterprise) |
 | `/v2/key-status` | API key usage & limits (free) |
 | `/v2/ping` | Health check — no auth required (free) |
 
 ### API v3 endpoints
 
-API key only. Free on the Pay-as-you-go and Grow plans until 31 October 2026, and open to Enterprise keys; a Free key can call only `/v3/key-status`. Times are unix seconds.
+API key only, on every plan. Each call but `/v3/key-status` costs credits on Free, PAYG and Grow, priced per endpoint on the [pricing page](https://docs.elfa.ai/get-started/pricing#api-v3). Times are unix seconds.
 
 | Endpoint | Description |
 |---|---|
