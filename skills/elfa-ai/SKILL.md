@@ -12,8 +12,8 @@ description: >
   moves (new followers, new follows, accounts converging), re-fire
   recurring plans via `repeat`, run calendar schedules via
   `cron.schedule`, and monitor crypto plus HIP-3 assets (equities, indices, commodities, FX,
-  pre-IPO — 24/7). Supports API-key calls and x402 pay-per-request USDC on Base, Arbitrum,
-  Polygon, Avalanche, or Solana.
+  pre-IPO — 24/7). Supports API keys and x402 pay-per-request USDC or USDT on Base,
+  Arbitrum, Polygon, Avalanche, BNB Smart Chain, or Solana.
 ---
 
 # Elfa API Skill
@@ -96,10 +96,9 @@ Elfa supports two independent ways to authenticate requests:
 | **x402 (keyless)** | `/x402/v2/` | `PAYMENT-SIGNATURE: <signed-payload>` | Agents & wallets — no signup needed |
 
 Both modes access the same v2 data. Otherwise the only difference is how you authenticate:
-- **API key** — register at https://go.elfa.ai/claude-skills. Start on **pay-as-you-go**: the
-  free tier is being phased out, so new integrations should top up a PAYG balance rather than
-  build against free credits.
-- **x402** — pay per request with USDC on Base, Arbitrum, Polygon, Avalanche, or Solana. No
+- **API key** — register at https://go.elfa.ai/claude-skills. A Free key gets 1,000 credits in
+  total, not per month; for ongoing use, top up a **pay-as-you-go** balance.
+- **x402** — pay per request with USDC or USDT on Base, Arbitrum, Polygon, Avalanche, BNB Smart Chain, or Solana. No
   registration, no API key. Currently in beta.
 
 ### Endpoints at a glance
@@ -123,7 +122,7 @@ except `key-status` which is API key mode only.
 | `/v2/aggregations/trending-cas/twitter` | GET | Trending contract addresses (Twitter) | 1 |
 | `/v2/aggregations/trending-cas/telegram` | GET | Trending contract addresses (Telegram) | 1 |
 | `/v2/chat` | POST | AI chat, complete JSON response (Grow+ / PAYG) | Speed-based |
-| `/v2/chat/stream` | POST | AI chat, incremental SSE stream (PAYG / Enterprise) | Speed-based |
+| `/v2/chat/stream` | POST | AI chat, incremental SSE stream (Grow+ / PAYG) | Speed-based |
 
 `/v2/ping`, `/v2/key-status`, and `/v2/chat/stream` are **API-key mode only** — they have no
 `/x402/v2/` counterpart.
@@ -131,9 +130,11 @@ except `key-status` which is API key mode only.
 #### API v3 endpoints
 
 API v3 turns news and market chatter across crypto and equities into events, positions and
-rankings. Every endpoint is `GET` and authenticates with `x-elfa-api-key` (no x402). The v3 API
-is free on the Pay-as-you-go and Grow plans until 31 October 2026, and Enterprise keys can call
-it too; a Free key can call only `/v3/key-status`. See Step 2d for the rules they share.
+rankings. Every endpoint is `GET` and authenticates with `x-elfa-api-key` (no x402). Every plan,
+Free included, can call every v3 endpoint. From 1 November 2026, 00:00 UTC, each call but
+`/v3/key-status` costs credits on Free, PAYG and Grow, priced per endpoint
+([pricing](https://docs.elfa.ai/get-started/pricing#api-v3)); Enterprise keys are not drawn down
+per call. See Step 2d for the rules they share.
 
 | Question | Endpoint | Returns |
 |---|---|---|
@@ -287,11 +288,11 @@ Use the `bash_tool` to call the Elfa API via curl.
    > **Option A — API key on pay-as-you-go (recommended):** Register at
    > **https://go.elfa.ai/claude-skills** and top up a PAYG balance — $0.0145 per credit,
    > $20 minimum, card or USDC. Then set the key as the `ELFA_API_KEY` environment variable
-   > (do not paste it directly into the chat). The free tier is being phased out, so start on
-   > PAYG rather than free credits.
+   > (do not paste it directly into the chat). A Free key gets 1,000 credits in total, not
+   > per month.
    >
-   > **Option B — x402 keyless payments:** Pay per request with USDC on Base, Arbitrum,
-   > Polygon, Avalanche, or Solana — no signup needed. See the
+   > **Option B — x402 keyless payments:** Pay per request with USDC or USDT on Base,
+   > Arbitrum, Polygon, Avalanche, BNB Smart Chain, or Solana — no signup needed. See the
    > [x402 docs](https://docs.elfa.ai/get-started/x402) for setup.
 
    Do not attempt any authenticated API calls without a key or x402 setup. Wait for the user.
@@ -307,35 +308,36 @@ Use the `bash_tool` to call the Elfa API via curl.
 
 Pay-per-use first: **PAYG** is $0.0145/credit at 60 RPM with an API key, drawn down from a
 prepaid credit balance ($20 minimum top-up, card or USDC); **x402** is $0.0145/credit at
-1,000 RPM with no account. Same per-credit price — pick on integration style. **The free tier
-is being phased out**, so recommend PAYG (or x402) for any new integration.
+1,000 RPM with no account. Same per-credit price — pick on integration style. A Free key gets
+1,000 credits in total, not per month, at 60 RPM; what is left becomes bonus credits on upgrade.
 
 Accounts already on PAYG keep $0.009 per credit until 28 September 2026, 16:00 UTC
 (29 September, 00:00 SGT). x402 has no accounts, so its price applies to every payer at once.
 
 Subscription plans:
 
-| | Free (phasing out) | Grow | Enterprise |
+| | PAYG | Grow | Enterprise |
 |---|---|---|---|
-| Monthly | $0 | $870 | Custom |
-| Annual (15% off) | $0 | $8,874 ($739.50/mo) | Custom |
-| Credits / month | 1,000 | 120,000 | Custom |
-| Overage | — | $0.00725 / credit | Custom |
+| Monthly | No subscription | $870 | Custom |
+| Annual (15% off) | — | $8,874 ($739.50/mo) | Custom |
+| Credits / month | Prepaid balance ($0.0145 / credit) | 120,000 | Custom |
+| Overage | — | $0.009 / credit | Custom |
 | Rate limit | 60 RPM | 120 RPM | Custom |
-| Agent Chat | — | ✓ | ✓ |
-| Agent Automation | — | ✓ (up to 100 active plans) | ✓ |
+| Agent Chat | ✓ | ✓ | ✓ |
+| Agent Automation | ✓ (up to 50 active plans) | ✓ (up to 100 active plans) | ✓ |
 
 Grow subscriptions started before October 2026 keep their existing price ($290/mo, or $2,958/yr
 billed annually), 40,000 credits per month, and $0.009 per overage credit.
 
 **What each tier unlocks:**
-- **Free** (phasing out) — core social data: trending tokens, smart stats, top mentions,
-  keyword mentions, event summaries, token news, trending contract addresses
-  (Twitter + Telegram)
-- **Grow** — everything in Free, plus token mindshare, sentiment-weighted mentions,
-  **trending narratives**, and **Elfa Intelligence** (Agent Chat and Agent Automation)
-- **Enterprise** — everything in Grow, plus custom credit and rate limits, **streaming AI Chat**
-  (Ask Elfa, `POST /v2/chat/stream`), dedicated support, custom integrations, and priority support
+- **PAYG** — core social data (trending tokens, smart stats, top mentions, keyword mentions,
+  event summaries, token news, trending contract addresses on Twitter and Telegram), plus token
+  mindshare, sentiment-weighted mentions, **trending narratives**, **Elfa Intelligence** (Agent
+  Chat and Agent Automation), and **streaming AI Chat** (Ask Elfa, `POST /v2/chat/stream`)
+- **Grow** — everything in PAYG, with 120,000 credits a month, $0.009 per overage credit, and
+  120 RPM
+- **Enterprise** — everything in Grow, plus custom credit and rate limits, dedicated support,
+  custom integrations, and priority support
 
 Gate summary for the tier-restricted endpoints:
 
@@ -343,12 +345,14 @@ Gate summary for the tier-restricted endpoints:
 |---|---|
 | `/v2/data/trending-narratives` | Grow+ or PAYG |
 | `/v2/chat` | Grow+ or PAYG |
-| `/v2/chat/stream` | **PAYG or Enterprise only** |
-| `/v3/*` except `/v3/key-status` | PAYG, Grow or Enterprise |
+| `/v2/chat/stream` | Grow+ or PAYG |
 
 On Grow, requests past the monthly credits keep working and are billed as overage, unless
-overage is turned off or a spend cap is set in the dashboard; on Free, they are rejected until
-credits reset next month. Exceeding the rate limit returns `429` (honor `Retry-After`). If a
+overage is turned off or a spend cap is set in the dashboard; on Free, past the 1,000 credits
+requests get `429 ERR_RATE_LIMITED` until you upgrade. A `429` has two codes, so branch on
+`code`: `ERR_RATE_LIMIT_EXCEEDED` is the per-minute limit (wait `RateLimit-Reset`, then retry);
+`ERR_RATE_LIMITED` means the key is out of credits, and retrying does not help. A PAYG key whose
+prepaid balance does not cover a call gets `402 ERR_INSUFFICIENT_CREDITS`. If a
 user hits an authorization error on a gated endpoint, they can move to PAYG, upgrade their plan,
 or use x402 instead (v2 only). Full details at
 https://go.elfa.ai/claude-skills.
@@ -361,7 +365,8 @@ curl -s -H "x-elfa-api-key: $ELFA_API_KEY" "https://api.elfa.ai/v2/aggregations/
 
 ### Step 2b: Making live API calls (x402 keyless mode)
 
-x402 lets any wallet pay per request using USDC on Base, Arbitrum, Polygon, Avalanche, or
+x402 lets any wallet pay per request using USDC or USDT on Base, Arbitrum, Polygon, Avalanche,
+BNB Smart Chain, or
 Solana — no API key, no registration. This is ideal for agents, bots, and programmatic access.
 
 **How x402 works:**
@@ -382,9 +387,10 @@ Solana — no API key, no registration. This is ideal for agents, bots, and prog
 
 **x402 details:**
 - **Networks:** the server offers every supported network in the 402 response; your client
-  signs on the first one it's registered for. Register the network(s) you hold USDC on.
+  signs on the first one it's registered for. Register the network(s) you hold funds on.
 - **Scheme:** `exact` (fixed price per request), plus `batch-settlement` (prepaid channel,
-  metered) on the chat endpoints on Base; asset is native Circle USDC (6 decimals).
+  metered) on the chat endpoints on Base; every network but BNB Smart Chain uses native Circle
+  USDC (6 decimals).
   `batch-settlement` needs no token approval: the deposit is a signed USDC authorization. It is
   offered on Base only; every other network, including Solana, is `exact` only.
 - **Errors:** branch on the HTTP status first and read the body as the refinement. Most
@@ -396,15 +402,20 @@ Solana — no API key, no registration. This is ideal for agents, bots, and prog
   the payment handshake, not a billing error. See [Error Responses](https://docs.elfa.ai/get-started/errors).
 - **Status:** Currently in beta.
 
-| Network | Chain ID | USDC Address | Facilitator |
+| Network | Chain ID | Token Address | Facilitator |
 |---|---|---|---|
-| Base | `eip155:8453` | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` | [payai.network](https://facilitator.payai.network) |
-| Arbitrum | `eip155:42161` | `0xaf88d065e77c8cC2239327C5EDb3A432268e5831` | [payai.network](https://facilitator.payai.network) |
-| Polygon | `eip155:137` | `0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359` | [payai.network](https://facilitator.payai.network) |
-| Avalanche | `eip155:43114` | `0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E` | [payai.network](https://facilitator.payai.network) |
-| Solana | `solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp` | `EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v` | [payai.network](https://facilitator.payai.network) |
+| Base | `eip155:8453` | USDC `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` | [payai.network](https://facilitator.payai.network) |
+| Arbitrum | `eip155:42161` | USDC `0xaf88d065e77c8cC2239327C5EDb3A432268e5831` | [payai.network](https://facilitator.payai.network) |
+| Polygon | `eip155:137` | USDC `0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359` | [payai.network](https://facilitator.payai.network) |
+| Avalanche | `eip155:43114` | USDC `0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E` | [payai.network](https://facilitator.payai.network) |
+| BNB Smart Chain | `eip155:56` | USDC `0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d`, USDT `0x55d398326f99059fF775485246999027B3197955` | [payai.network](https://facilitator.payai.network) |
+| Solana | `solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp` | USDC `EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v` | [payai.network](https://facilitator.payai.network) |
 
-EVM signing costs no gas. On Solana the facilitator pays the transaction fee.
+EVM signing costs no gas. On Solana the facilitator pays the transaction fee. BNB Smart Chain
+takes Binance-Peg USDC and USDT with 18 decimals, `exact` only, and pays through Permit2: the
+wallet approves the token for Permit2 once (an onchain transaction that costs BNB gas), and the
+client must list the token in `spendControls.allowedAssets`. See
+[BNB Smart Chain](https://docs.elfa.ai/get-started/x402#bnb-smart-chain).
 
 **x402 pricing (data endpoints):**
 
@@ -551,7 +562,7 @@ score.
 | Surface | Endpoint | Plan | Use when |
 |---|---|---|---|
 | API key JSON | `POST /v2/chat` | Grow+ or PAYG | Client cannot consume SSE, or wants one complete JSON answer |
-| API key SSE | `POST /v2/chat/stream` | **PAYG or Enterprise** | Client can consume SSE and wants incremental output |
+| API key SSE | `POST /v2/chat/stream` | Grow+ or PAYG | Client can consume SSE and wants incremental output |
 | x402 JSON | `POST /x402/v2/chat` | Pay-per-request | Wallet-based agent, no API key |
 
 Both surfaces take the **same request body**. `analysisType` decides the mode:
@@ -576,6 +587,12 @@ of the stream. In the order read, without duplicates, at most 50; each has a `ur
 other value as `web`) and an optional `title`. Links only, never page or post text. A source was
 read, not necessarily cited. The flag costs nothing extra.
 
+**Memory (opt-in):** a request uses saved memory only with `useMemory: true`. Then the answer can
+draw on notes from earlier chats on the Elfa account that owns the API key, and this chat can add
+to them; it has no effect when memory is off in that account's chat settings. Leave it off when
+one key serves many end users, or one user's details shape another's answer. To carry context
+within a conversation, pass `sessionId` instead. `/x402/v2/chat` has no `useMemory`.
+
 **Speed:** `fast` (shallower), `expert` (**default**), and `adaptive` (Elfa chooses) —
 `adaptive` is available on `/v2/chat` but **not** on `/x402/v2/chat`.
 
@@ -594,7 +611,7 @@ read, not necessarily cited. The flag costs nothing extra.
 | `error` | stream failure |
 
 A `: keep-alive` comment may arrive during long gaps. The stream terminates with
-`data: [DONE]`. Returns `403` if the key is not PAYG or Enterprise.
+`data: [DONE]`. Returns `403` if the key is not PAYG, Grow or Enterprise.
 
 ```bash
 curl -sN -X POST "https://api.elfa.ai/v2/chat/stream" \
@@ -619,13 +636,12 @@ or short an asset and whose calls to trust, which assets get the most attention,
 accounts are worth reading — across crypto and equities. Endpoints are listed in
 [API v3 endpoints](#api-v3-endpoints). Full docs: [docs.elfa.ai/api/v3/overview](https://docs.elfa.ai/api/v3/overview).
 
-API v3 needs `ELFA_API_KEY` with v3 access (see [API v3 endpoints](#api-v3-endpoints)), and the
-Step 2a key rules apply. Without one, offer one, or fall back to `event-summary` (any key, or
-x402) or `chat` via x402. To check eligibility, read `scopes` on `/v3/key-status`, not `plan`:
-a Free key reads `payg` there, with no v3 scope. The two plan `403` messages are stable and tell
-the cases apart: `The v3 API isn't included in this key's plan. …` is a Free key (upgrade in
-the [Developer Portal](https://go.elfa.ai/dev)); `API key does not have the required scope: …`
-is a paid key without that endpoint (email support@elfa.ai with the `requestId`).
+API v3 needs `ELFA_API_KEY`, on any plan (see [API v3 endpoints](#api-v3-endpoints)), and the
+Step 2a key rules apply. Without one, offer one, or fall back to `event-summary` or `chat` via
+x402. `/v3/key-status` lists the scopes the key holds. The two `403` messages are stable and tell
+the cases apart: `The v3 API isn't included in this key's plan. …` is a key on a plan without v3
+(upgrade in the [Developer Portal](https://go.elfa.ai/dev)); `API key does not have the required
+scope: …` is a key without that endpoint (email support@elfa.ai with the `requestId`).
 
 **Resolve first.** Entity filters take an id, not a ticker. Resolve the asset, read its last day
 of events, then see how accounts are positioned on it. Check the resolved name: the first match
@@ -657,13 +673,14 @@ curl -s "https://api.elfa.ai/v3/calls/positioning?entityId=$ID" \
 |---|---|
 | Times | Unix seconds, UTC, in requests and responses. Milliseconds are a `400`: divide by 1000 |
 | Time ranges | `from` is required, `to` defaults to now, both inclusive. No `from` is needed when fetching by id or searching with `q`; entities, arcs, positioning and top accounts take no range at all, and mindshare takes a `period` |
-| History | 30 days (PAYG), 60 days (Grow) or 2 years (Enterprise) back. An earlier `from` is cut, and `servedFrom` says where; a `to` before it is a `400`. `/v3/key-status` returns the start as `historyFrom` |
+| History | 30 days (Free, PAYG), 60 days (Grow) or 2 years (Enterprise) back. An earlier `from` is cut, and `servedFrom` says where; a `to` before it is a `400`. `/v3/key-status` returns the start as `historyFrom` |
 | Paging | Pass `nextCursor` back as `cursor`. `hasMore: false` marks the last page. No offset, no total. Change anything but `limit` and the cursor is a `400` |
 | Lists | Parameters marked a list take several values, repeated or comma-separated. At most 30 ids |
 | By id | `eventIds`, `storylineIds`, `arcIds`, `callIds` and `episodeIds` fetch up to 30, with no `from` |
 | Errors | A bad or unknown parameter is a `400` naming the field in `details`, and an unknown id in a filter is a `400`, `Unknown id: …`. Unknown ids in an `*Ids` fetch are skipped. Nothing matching is a `200` with an empty list |
 | Responses | The list is top-level and named for what it holds (`events`, `entities`, `bars`, …), with no `data` wrapper |
-| Rate limits | Per key, shared with `/v2`. On `429`, wait `RateLimit-Reset` seconds |
+| Rate limits | Per key, shared with `/v2`. `429 ERR_RATE_LIMIT_EXCEEDED`: wait `RateLimit-Reset` seconds. `429 ERR_RATE_LIMITED`: out of credits, retrying does not help |
+| Credits | From 1 November 2026, priced per endpoint, see [pricing](https://docs.elfa.ai/get-started/pricing#api-v3). A PAYG balance that does not cover a call is `402 ERR_INSUFFICIENT_CREDITS`. Errors cost nothing. `x-elfa-credits` gives a call's cost and, on a `200`, `x-elfa-credits-detail` how it adds up |
 
 No v3 endpoint returns post text. Events carry a written title and summary, and link to each
 post behind them.
@@ -811,7 +828,7 @@ existing queries/sessions may become inaccessible.
 
 > Reference USD values for Create: baseline `$0.0725`, fast call `+$0.0725`, expert call `+$0.261`. Use `/queries/validate` to preview exact cost before committing.
 
-**x402 mode (`/x402/v2/auto/*`) — pay-per-request in USDC on Base, Arbitrum, Polygon, Avalanche, or Solana:**
+**x402 mode (`/x402/v2/auto/*`) — pay-per-request in USDC or USDT on Base, Arbitrum, Polygon, Avalanche, BNB Smart Chain, or Solana:**
 
 Builder Chat is speed-based with two schemes — a flat `exact` price, or, on Base when the 402
 lists it, a prepaid `batch-settlement` channel charged only what the turn used, up to the cap:
@@ -1090,7 +1107,7 @@ sibling — by default a plan is one-shot; see **Repeat** below):
 copy-trading), never on short-timeframe TA/scalps.
 
 **Plan limits (active plans per account):** an account can only hold so many **active** plans
-at once, by API key tier — Free `2`, Grow `50`, PAYG/Enterprise unlimited. A hard
+at once, by API key tier — Free `2`, PAYG `50`, Grow `100`, Enterprise unlimited. A hard
 ceiling of **500 active plans** applies regardless of tier; exceeding either cap returns
 `409`. Only *active* plans count — expired/cancelled/terminal plans free capacity, so
 cancelling stale plans (or choosing a shorter `expiresIn`) is the fastest way to make room.
@@ -1320,7 +1337,7 @@ Triggers on events: news about an asset, project, company, person, or macro — 
 - Preview before creating: `GET /v3/events` with the same filters and `from=<now - 1d>` (`entityIds=<id>` for `entity`) returns what the condition would have fired on. `q` has no counterpart: `text` checks a claim per event instead. `GET /v3/events/storylines?storylineIds=<id>` maps to `"storylineId": "<id>"`, one storyline per condition. One value per argument, no time range. Mapping: https://docs.elfa.ai/auto/events#from-v3-events
 - `match` in the trigger payload: `eventId`, `title` (the event's `alertTitle`), `eventClass`, `eventType`, `implication`, `alertAction`, `novelty`, `timeSensitivity`, `citedSourceCount`, `analyzedAt` (ISO 8601), `entities[]` (`symbol`, `name`, `entityType`; up to 10), and `confidence` when `text` was checked. No link, no summary.
 - `match.eventId` is the event's `id` in `/v3/events` — **not** the webhook delivery id (`X-Auto-Event-Id`, the one to dedupe deliveries on). `GET /v3/events?eventIds=<match.eventId>` returns the summary, cited posts with links, price impacts and `storylineId`. To be alerted once per story, filter on `relation: "origin"` rather than comparing `storylineId` values yourself; to follow the story an alert belongs to, create a condition on its `storylineId`.
-- The `/v3` endpoints need a Pay-as-you-go, Grow or Enterprise key. Without one, name the entity by ticker or name and read the Validate response for what it resolved to.
+- Without an API key for the `/v3` endpoints, name the entity by ticker or name and read the Validate response for what it resolved to.
 
 ```json
 {
@@ -2753,7 +2770,7 @@ See the [Elfa API documentation](https://docs.elfa.ai) for the full parameter sp
 - Different `assetMetadata` requirements per analysis type (`message` is required only for
   `analysisType: "chat"`)
 - Three speed modes: `fast`, `expert` (default), and `adaptive` (`/v2/chat` only)
-- Two transports: `POST /v2/chat` (JSON) and `POST /v2/chat/stream` (SSE, PAYG/Enterprise) —
+- Two transports: `POST /v2/chat` (JSON) and `POST /v2/chat/stream` (SSE) —
   same body, different plan gate. See [Step 2c](#chat--json-vs-streaming) for the SSE event
   types.
 
@@ -2824,7 +2841,8 @@ Use `$` when you want only cashtag-specific mentions. Omit `$` for a more inclus
 - Event summary: 5 credits ($0.0725 via x402)
 - Trending narratives: 5 credits ($0.0725 via x402)
 - Chat: speed-based; via x402 pay `exact` (fast $1, expert $2) or `batch-settlement` (up to fast $2, expert $6)
-- API v3: free on the Pay-as-you-go and Grow plans until 31 October 2026. API key only
+- API v3: every plan; from 1 November 2026 priced per endpoint on Free, PAYG and Grow
+  (https://docs.elfa.ai/get-started/pricing#api-v3). API key only
 - `/v2/ping`, `/v2/key-status`: free
 - Every `/v2/*` and `/v3/*` response to an authenticated request carries an **`x-elfa-credits`** header with
   the credits that request consumed — read it instead of diffing `/v2/key-status` around a call.
@@ -2865,7 +2883,8 @@ Use `$` when you want only cashtag-specific mentions. Omit `$` for a more inclus
   https://go.elfa.ai/claude-skills for full details on plans and pricing.
 - API-key request rate limits are per tier: Free / PAYG = **60 requests/min**,
   Grow = **120 requests/min** (Enterprise custom). These are independent of credit balances.
-  A `429` response should be retried honoring `Retry-After`.
+  Branch a `429` on `code`: retry `ERR_RATE_LIMIT_EXCEEDED` after `RateLimit-Reset`; on
+  `ERR_RATE_LIMITED` the key is out of credits, and retrying does not help.
 - x402 is currently in beta. Rate limits: 1,000 requests per 60s window (per client IP).
 - Install/update this skill with `npx skills add elfa-ai/skills`. API keys come from the
   [Elfa Developer Portal](https://go.elfa.ai/dev).
