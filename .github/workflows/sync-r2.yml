@@ -1,0 +1,80 @@
+name: Sync skills to R2
+
+# Publishes skills/ to the bucket behind skills.elfa.ai, so the hosted copy
+# follows main.
+#
+# Only `push` to main and `workflow_dispatch` trigger this. Never add a
+# `pull_request` or `pull_request_target` trigger: this job holds bucket write
+# credentials, and this repository is public.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'skills/**'
+      - '.github/workflows/sync-r2.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-r2
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Sync skills to R2
+    if: github.repository == 'elfa-ai/skills' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - name: Upload skills/ to R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          # R2 does not accept every checksum newer AWS CLIs send by default.
+          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+          AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          set -euo pipefail
+          endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+
+          # Copy only, no --delete: objects in the bucket that are not in
+          # skills/ are left alone. Remove a retired skill from the bucket by hand.
+          aws s3 cp skills/ "s3://${R2_BUCKET}/" --recursive \
+            --endpoint-url "$endpoint" --only-show-errors \
+            --exclude '*' --include '*.md' \
+            --content-type 'text/markdown; charset=utf-8'
+          aws s3 cp skills/ "s3://${R2_BUCKET}/" --recursive \
+            --endpoint-url "$endpoint" --only-show-errors \
+            --exclude '*.md' \
+            --exclude '*.DS_Store' --exclude '*/.env' --exclude '*/.env.*'
+
+          # skills.elfa.ai/SKILL.md is the published link to the elfa-ai skill.
+          aws s3 cp skills/elfa-ai/SKILL.md "s3://${R2_BUCKET}/SKILL.md" \
+            --endpoint-url "$endpoint" --only-show-errors \
+            --content-type 'text/markdown; charset=utf-8'
+
+      - name: Check skills.elfa.ai serves this commit
+        run: |
+          set -euo pipefail
+          want=$(md5sum skills/elfa-ai/SKILL.md | cut -d' ' -f1)
+          for _ in 1 2 3 4 5 6; do
+            got=$(curl -fsS "https://skills.elfa.ai/SKILL.md?v=${GITHUB_SHA}" | md5sum | cut -d' ' -f1) || got=
+            if [ "$got" = "$want" ]; then
+              echo "skills.elfa.ai/SKILL.md matches ${GITHUB_SHA}"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::skills.elfa.ai/SKILL.md does not match skills/elfa-ai/SKILL.md at ${GITHUB_SHA}"
+          exit 1
