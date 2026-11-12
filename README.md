@@ -204,7 +204,7 @@ Alert me when SOL turns hot on 4h mindshare
 
 ### API v3 endpoints
 
-API key only, on every plan. Each call but `/v3/key-status` costs credits on Free, PAYG and Grow, priced per endpoint on the [pricing page](https://docs.elfa.ai/get-started/pricing#api-v3). Times are unix seconds.
+API key only, on every plan. Each call but `/v3/key-status` and, for now, `/v3/events/prediction-markets` costs credits on Free, PAYG and Grow, priced per endpoint on the [pricing page](https://docs.elfa.ai/get-started/pricing#api-v3). Times are unix seconds.
 
 | Endpoint | Description |
 |---|---|
@@ -212,6 +212,7 @@ API key only, on every plan. Each call but `/v3/key-status` costs credits on Fre
 | `/v3/events` | Events: what happened, what it names, how prices reacted. Searchable by topic |
 | `/v3/events/storylines` | One development followed over days |
 | `/v3/events/arcs` | Storylines grouped into a larger movement |
+| `/v3/events/prediction-markets` | Open Polymarket and Kalshi markets for an event, storyline or arc, and how their odds moved |
 | `/v3/market/crypto/mindshare`, `/v3/market/equity/mindshare` | Assets ranked by share of attention, with `hot` |
 | `/v3/market/crypto/trending-contracts` | Contract addresses ranked by how many posts pasted them |
 | `/v3/market/crypto/call-book`, `/v3/market/equity/call-book` | The whole market's long/short lean, hour by hour |
