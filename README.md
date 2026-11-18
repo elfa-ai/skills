@@ -1,6 +1,6 @@
 # Elfa AI Skills
 
-Real-time crypto social intelligence and automated condition-engine skills for AI agents. Track trending tokens, surface narratives, search mentions, read events, positions and rankings across crypto and equities, run market analysis, and build automated trigger-based workflows.
+Real-time crypto social intelligence and automated condition-engine skills for AI agents. Track trending tokens, surface narratives, search mentions, read events, positions and rankings across crypto and equities, check claims with Verify, watch topics with Monitors, run market analysis, and build automated trigger-based workflows.
 
 Works with **Claude Code**, **OpenCode**, **Cursor**, **GitHub Copilot**, **Codex**, and any tool that supports the [Agent Skills](https://agentskills.io) standard.
 
@@ -104,7 +104,7 @@ For a bundled `.skill` package with API docs and scripts included (currently `el
 
 | Skill | Description |
 |---|---|
-| [elfa-ai](skills/elfa-ai) | Crypto social intelligence + Auto condition engine — trending tokens, mentions, narratives, API v3 events, positions and rankings, AI market analysis, and automated trigger workflows |
+| [elfa-ai](skills/elfa-ai) | Crypto social intelligence + Auto condition engine — trending tokens, mentions, narratives, API v3 events, calendar, positions and rankings, Verify, Monitors, AI market analysis, and automated trigger workflows |
 
 ## Spec validation
 
@@ -126,9 +126,9 @@ Set the key as an environment variable:
 export ELFA_API_KEY=your_key_here
 ```
 
-AI chat and streaming AI chat require PAYG, Grow or Enterprise; trending narratives and API v3 are open to every plan — see the link above for details.
+AI chat, streaming AI chat, Verify and Monitors require PAYG, Grow or Enterprise; trending narratives and the API v3 data endpoints are open to every plan — see the link above for details.
 
-Alternatively, use **x402 keyless payments** to pay per request with USDC on Base, Arbitrum, Polygon, Avalanche, BNB Smart Chain or Solana, or USDT on BNB Smart Chain (no signup required). See the [x402 docs](https://docs.elfa.ai/get-started/x402) for setup.
+Alternatively, use **x402 keyless payments** to pay per request with USDC on Base, Arbitrum, Polygon, Avalanche, BNB Smart Chain or Solana, or USDT on BNB Smart Chain (no signup required). See the [x402 docs](https://docs.elfa.ai/platform/authentication#pay-per-request-with-x402) for setup.
 
 ## Example prompts
 
@@ -146,6 +146,18 @@ Which accounts have the best track record calling SOL?
 
 ```
 What happened to ETH in the last day, and who is long or short it right now?
+```
+
+```
+What token unlocks and rate decisions are coming up this week?
+```
+
+```
+Is it true that Binance will list HYPE for spot trading?
+```
+
+```
+Send a webhook to https://example.com/hook whenever Binance announces a token delisting
 ```
 
 ```
@@ -204,7 +216,7 @@ Alert me when SOL turns hot on 4h mindshare
 
 ### API v3 endpoints
 
-API key only, on every plan. Each call but `/v3/key-status` and, for now, `/v3/events/prediction-markets` costs credits on Free, PAYG and Grow, priced per endpoint on the [pricing page](https://docs.elfa.ai/get-started/pricing#api-v3). Times are unix seconds.
+API key only. The data endpoints work on every plan: each call but `/v3/key-status` and, for now, `/v3/events/prediction-markets` costs credits on Free, PAYG and Grow, priced per endpoint on the [pricing page](https://docs.elfa.ai/platform/pricing#api-v3). Times are unix seconds.
 
 | Endpoint | Description |
 |---|---|
@@ -213,6 +225,7 @@ API key only, on every plan. Each call but `/v3/key-status` and, for now, `/v3/e
 | `/v3/events/storylines` | One development followed over days |
 | `/v3/events/arcs` | Storylines grouped into a larger movement |
 | `/v3/events/prediction-markets` | Open Polymarket and Kalshi markets for an event, storyline or arc, and how their odds moved |
+| `/v3/events/calendar` | What is scheduled — launches, unlocks, listings, earnings, rate decisions — soonest first |
 | `/v3/market/crypto/mindshare`, `/v3/market/equity/mindshare` | Assets ranked by share of attention, with `hot` |
 | `/v3/market/crypto/trending-contracts` | Contract addresses ranked by how many posts pasted them |
 | `/v3/market/crypto/call-book`, `/v3/market/equity/call-book` | The whole market's long/short lean, hour by hour |
@@ -222,7 +235,18 @@ API key only, on every plan. Each call but `/v3/key-status` and, for now, `/v3/e
 | `/v3/people/accounts` | Accounts ranked by standing, or by track record (`metric=alphaScore`, `hitRate`, `avgReturn`) |
 | `/v3/key-status` | Plan, credits, limits and how far back the key reads |
 
-See [API v3 docs](https://docs.elfa.ai/api/v3/overview).
+Verify and Monitors need PAYG, Grow or Enterprise.
+
+| Endpoint | Description |
+|---|---|
+| `/v3/verify` | Check one claim against X posts, public Telegram channels and web pages: verdict, probabilities, evidence links (POST, 1 credit) |
+| `/v3/monitors` | Create (POST) or list (GET) monitors: a plain-words query and a webhook, signed with Standard Webhooks |
+| `/v3/monitors/:id` | Get (GET), change (PATCH) or delete (DELETE) a monitor |
+| `/v3/monitors/:id/events` | A monitor's matches from the last 30 days |
+
+A live monitor costs 2 credits for every started hour until you delete it; every other monitor call is free. A key holds 20 live monitors.
+
+See the [API v3](https://docs.elfa.ai/enrich/overview), [Verify](https://docs.elfa.ai/verify/overview) and [Monitors](https://docs.elfa.ai/monitors/overview) docs.
 
 ### Auto endpoints (Condition Engine)
 
