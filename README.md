@@ -126,9 +126,9 @@ Set the key as an environment variable:
 export ELFA_API_KEY=your_key_here
 ```
 
-AI chat, streaming AI chat, Verify and Monitors require PAYG, Grow or Enterprise; trending narratives and the API v3 data endpoints are open to every plan — see the link above for details.
+AI chat and streaming AI chat require PAYG, Grow or Enterprise; trending narratives, the API v3 data endpoints, Verify and Monitors are open to every plan — see the link above for details.
 
-Alternatively, use **x402 keyless payments** to pay per request with USDC on Base, Arbitrum, Polygon, Avalanche, BNB Smart Chain or Solana, or USDT on BNB Smart Chain (no signup required). See the [x402 docs](https://docs.elfa.ai/platform/authentication#pay-per-request-with-x402) for setup.
+Alternatively, use **x402 keyless payments**, on the v2 endpoints and the API v3 data endpoints, to pay per request with USDC on Base, Arbitrum, Polygon, Avalanche, BNB Smart Chain or Solana, or USDT on BNB Smart Chain (no signup required). See the [x402 docs](https://docs.elfa.ai/platform/authentication#pay-per-request-with-x402) for setup.
 
 ## Example prompts
 
@@ -216,7 +216,7 @@ Alert me when SOL turns hot on 4h mindshare
 
 ### API v3 endpoints
 
-API key only. The data endpoints work on every plan: each call but `/v3/key-status` and, for now, `/v3/events/prediction-markets` costs credits on Free, PAYG and Grow, priced per endpoint on the [pricing page](https://docs.elfa.ai/platform/pricing#api-v3). Times are unix seconds.
+The data endpoints work on every plan, and all but `/v3/key-status` also take x402 at the same URL with no key. Each call but `/v3/key-status` costs credits on Free, PAYG and Grow, priced per endpoint on the [pricing page](https://docs.elfa.ai/platform/pricing#api-v3). Times are unix seconds.
 
 | Endpoint | Description |
 |---|---|
@@ -235,7 +235,7 @@ API key only. The data endpoints work on every plan: each call but `/v3/key-stat
 | `/v3/people/accounts` | Accounts ranked by standing, or by track record (`metric=alphaScore`, `hitRate`, `avgReturn`) |
 | `/v3/key-status` | Plan, credits, limits and how far back the key reads |
 
-Verify and Monitors need PAYG, Grow or Enterprise.
+Verify and Monitors work on every plan, with an API key only.
 
 | Endpoint | Description |
 |---|---|
