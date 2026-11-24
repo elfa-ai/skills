@@ -1,6 +1,8 @@
 # Elfa AI Skills
 
-Real-time crypto social intelligence and automated condition-engine skills for AI agents. Track trending tokens, surface narratives, search mentions, read events, positions and rankings across crypto and equities, check claims with Verify, watch topics with Monitors, run market analysis, and build automated trigger-based workflows.
+Agent skills for Elfa. Get events, answers, verdicts and alerts from social and web data.
+
+Elfa indexes social media and web pages, and turns them into high-intent events and entities. Your agent can query them, ask about them, or get an alert when they happen. Use one API key. Agents without an account can pay per request from a wallet with x402.
 
 Works with **Claude Code**, **OpenCode**, **Cursor**, **GitHub Copilot**, **Codex**, and any tool that supports the [Agent Skills](https://agentskills.io) standard.
 
@@ -104,7 +106,7 @@ For a bundled `.skill` package with API docs and scripts included (currently `el
 
 | Skill | Description |
 |---|---|
-| [elfa-ai](skills/elfa-ai) | Crypto social intelligence + Auto condition engine — trending tokens, mentions, narratives, API v3 events, calendar, positions and rankings, Verify, Monitors, AI market analysis, and automated trigger workflows |
+| [elfa-ai](skills/elfa-ai) | Get events, answers, verdicts and alerts from social and web data: Data (events, calendar, positions and rankings), Explain, Verify, Monitors, Auto alerts and trigger workflows, and the older social data endpoints (trending tokens, mentions, narratives) |
 
 ## Spec validation
 
@@ -126,9 +128,9 @@ Set the key as an environment variable:
 export ELFA_API_KEY=your_key_here
 ```
 
-AI chat and streaming AI chat require PAYG, Grow or Enterprise; trending narratives, the API v3 data endpoints, Verify and Monitors are open to every plan — see the link above for details.
+Explain (AI market chat, and its stream) requires PAYG, Grow or Enterprise; the Data endpoints, Verify, Monitors and trending narratives are open to every plan — see the link above for details.
 
-Alternatively, use **x402 keyless payments**, on the v2 endpoints and the API v3 data endpoints, to pay per request with USDC on Base, Arbitrum, Polygon, Avalanche, BNB Smart Chain or Solana, or USDT on BNB Smart Chain (no signup required). See the [x402 docs](https://docs.elfa.ai/platform/authentication#pay-per-request-with-x402) for setup.
+Alternatively, use **x402 keyless payments**, on the v2 endpoints and the Data endpoints, to pay per request with USDC on Base, Arbitrum, Polygon, Avalanche, BNB Smart Chain or Solana, or USDT on BNB Smart Chain (no signup required). See the [x402 docs](https://docs.elfa.ai/platform/authentication#pay-per-request-with-x402) for setup.
 
 ## Example prompts
 
@@ -198,6 +200,8 @@ Alert me when SOL turns hot on 4h mindshare
 
 ## API endpoints
 
+Apart from `/v2/chat` and `/v2/chat/stream` (Explain), these are the older social data endpoints. Elfa will deprecate them; they still work, but build new work on the [Data endpoints](#data-verify-and-monitors-endpoints).
+
 | Endpoint | Description |
 |---|---|
 | `/v2/aggregations/trending-tokens` | Trending tokens by mention count |
@@ -214,7 +218,7 @@ Alert me when SOL turns hot on 4h mindshare
 | `/v2/key-status` | API key usage & limits (free) |
 | `/v2/ping` | Health check — no auth required (free) |
 
-### API v3 endpoints
+### Data, Verify and Monitors endpoints
 
 The data endpoints work on every plan, and all but `/v3/key-status` also take x402 at the same URL with no key. Each call but `/v3/key-status` costs credits on Free, PAYG and Grow, priced per endpoint on the [pricing page](https://docs.elfa.ai/platform/pricing#api-v3). Times are unix seconds.
 
@@ -246,9 +250,9 @@ Verify and Monitors work on every plan, with an API key only.
 
 A live monitor costs 2 credits for every started hour until you delete it; every other monitor call is free. A key holds 20 live monitors.
 
-See the [API v3](https://docs.elfa.ai/enrich/overview), [Verify](https://docs.elfa.ai/verify/overview) and [Monitors](https://docs.elfa.ai/monitors/overview) docs.
+See the [Data](https://docs.elfa.ai/enrich/overview), [Verify](https://docs.elfa.ai/verify/overview) and [Monitors](https://docs.elfa.ai/monitors/overview) docs.
 
-### Auto endpoints (Condition Engine)
+### Auto endpoints
 
 | Endpoint | Description |
 |---|---|
